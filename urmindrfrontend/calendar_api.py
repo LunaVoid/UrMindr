@@ -1,13 +1,18 @@
 from flask import Flask, redirect, url_for, session, request, render_template_string
 import os
-os.environ['OAUTHLIB_INSECURE_TRANSPORT'] = '1'
+from flask import jsonify
+from flask_cors import CORS
+os.environ['OAUTHLIB_INSECURE_TRANSPORT'] = '1' # is this bad
 import datetime
 from google_auth_oauthlib.flow import Flow
 from googleapiclient.discovery import build
 from google.oauth2.credentials import Credentials
 
+
+
 app = Flask(__name__)
 app.secret_key = os.urandom(24)
+CORS(app, supports_credentials=True)
 
 # Google OAuth settings
 SCOPES = [
@@ -17,9 +22,17 @@ SCOPES = [
 CLIENT_SECRETS_FILE = "credentials.json"  
 REDIRECT_URI = "http://localhost:5000/oauth2callback"  
 
+def creds_to_dict(creds):
+    return {
+        "token": creds.token,
+        "refresh_token": creds.refresh_token,
+        "token_uri": creds.token_uri,
+        "client_id": creds.client_id,
+        "client_secret": creds.client_secret,
+        "scopes": creds.scopes,
+    }
 
 def get_credentials():
-    """Get credentials from session, return Credentials object or None"""
     if "credentials" in session:
         creds = Credentials(**session["credentials"])
         session["credentials"] = creds_to_dict(creds)  # refresh in session
@@ -44,9 +57,21 @@ def fetch_events(creds, max_results=10):
     )
     return events_result.get("items", [])
 
+def authorize_flow():
+    flow = Flow.from_client_secrets_file(
+        CLIENT_SECRETS_FILE,
+        scopes=SCOPES,
+        redirect_uri=REDIRECT_URI,
+    )
+    authorization_url, state = flow.authorization_url(
+        access_type="offline", 
+        include_granted_scopes="true"
+    )
+    session["state"] = state
+    return authorization_url
+
 
 def display_events(events):
-    """Return HTML string for events list"""
     html = "<h2>Upcoming Events:</h2><ul>"
     for event in events:
         start = event["start"].get("dateTime", event["start"].get("date"))
@@ -54,20 +79,6 @@ def display_events(events):
     html += "</ul>"
     html += '<a href="/logout">Logout</a>'
     return html
-
-
-def authorize_flow():
-    """Start OAuth flow and return authorization URL"""
-    flow = Flow.from_client_secrets_file(
-        CLIENT_SECRETS_FILE,
-        scopes=SCOPES,
-        redirect_uri=REDIRECT_URI,
-    )
-    authorization_url, state = flow.authorization_url(
-        access_type="offline", include_granted_scopes="true"
-    )
-    session["state"] = state
-    return authorization_url
 
 
 def handle_oauth2_callback():
@@ -86,20 +97,7 @@ def handle_oauth2_callback():
     session["credentials"] = creds_to_dict(creds)
 
 
-def creds_to_dict(creds):
-    """Convert Credentials object to dict for session storage"""
-    return {
-        "token": creds.token,
-        "refresh_token": creds.refresh_token,
-        "token_uri": creds.token_uri,
-        "client_id": creds.client_id,
-        "client_secret": creds.client_secret,
-        "scopes": creds.scopes,
-    }
-
-
 def create_event(creds, name, start_time, end_time):
-    """Create a new event in Google Calendar"""
     service = build("calendar", "v3", credentials=creds)
     event = {
         "name": name,
@@ -107,7 +105,7 @@ def create_event(creds, name, start_time, end_time):
         "end": {"dateTime": end_time.isoformat(), "timeZone": "UTC"},
     }
     created_event = service.events().insert(calendarId="primary", body=event).execute()
-    return created_event
+    return jsonify({"event": created_event})
 
 
 # Routes
@@ -156,6 +154,27 @@ def create_event_route():
     print ("event created")
     return redirect(url_for("index"))
 
+
+@app.route("/auth-url", methods=["POST"])
+def auth_url():
+    id_token = request.json.get("idToken")
+    if id_token:
+        try:
+            decoded = firebase_auth.verify_id_token(id_token)
+            session["firebase_uid"] = decoded["uid"]
+        except Exception as e:
+            return jsonify({"error": "invalid id token"}), 401
+    authorization_url = authorize_flow() 
+    return jsonify({"authorization_url": authorization_url})
+
+@app.route("/events")
+def events_route():
+    creds = get_credentials()
+    if not creds:
+        return jsonify({"error": "Not authorized"}), 401
+    
+    events = fetch_events(creds)
+    return jsonify({"events": events})
 
 if __name__ == "__main__":
     app.run("localhost", 5000, debug=True)

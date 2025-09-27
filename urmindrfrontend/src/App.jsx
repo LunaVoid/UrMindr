@@ -4,6 +4,7 @@ import { getAuth, onAuthStateChanged } from "firebase/auth";
 import Navbar from "./components/Navbar";
 import Landing from "./pages/Landing";
 import Home from "./pages/Home";
+import Chat from "./pages/Chat";
 
 function App() {
   const [user, setUser] = useState(null);
