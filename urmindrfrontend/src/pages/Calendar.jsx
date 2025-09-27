@@ -15,6 +15,10 @@ function Calendar( {token}) {
         .catch(err => console.error(err));
         }, [token]);
 
+    const handleConnectCalendar = () => {
+      console.log("Connect Calendar button clicked");
+    };
+
 
         return (
     <div>
@@ -27,8 +31,8 @@ function Calendar( {token}) {
             ))}
         </ul>
         <button onClick={handleConnectCalendar} className="bg-green-500 text-white px-4 py-2 rounded">
-          Connect Google Calendar
-        </button>
+      Connect Google Calendar
+    </button>
 
     </div>
   );
