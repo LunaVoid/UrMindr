@@ -202,8 +202,6 @@ def execute_function_call(function_call):
     """Executes the appropriate function based on the model's call and returns a dictionary."""
     if function_call.name == 'schedule_meeting':
         return handle_schedule_meeting(function_call.args, access_token)
-    else if function_call.name = "get_time"
-        
     else:
         return jsonify({"error": f"Unknown function call: {function_call.name}"}), 400
 
