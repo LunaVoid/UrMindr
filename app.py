@@ -384,13 +384,15 @@ def get_all_user_chats_route():
         chats_data = {}
         chats = get_user_chats(user_id)
         for chat_id, chat_info in chats.items():
-            messages_ref = db.collection('users').document(user_id).collection('chats').document(chat_id).collection('messages')
-            messages_docs = messages_ref.order_by('timestamp').get()
+            # Retrieve the chat document to get the messages array
+            chat_doc_ref = db.collection('users').document(user_id).collection('chats').document(chat_id)
+            chat_doc = chat_doc_ref.get()
             
             messages = []
-            for msg_doc in messages_docs:
-                messages.append(msg_doc.to_dict())
+            if chat_doc.exists and 'messages' in chat_doc.to_dict():
+                messages = chat_doc.to_dict()['messages']
             
+            print(f"  Messages for chat {chat_id}: {messages}") # Debug print
             chats_data[chat_id] = messages
         
         print(f"All chats for user {user_id}:")

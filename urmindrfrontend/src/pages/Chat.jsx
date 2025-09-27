@@ -10,6 +10,7 @@ function Chat() {
   const [input, setInput] = useState("");
   const [user, setUser] = useState(null);
   const [currentChatId, setCurrentChatId] = useState(null);
+  const [historicalChats, setHistoricalChats] = useState({}); // New state for historical chats
 
   useEffect(() => {
     const auth = getAuth();
@@ -18,6 +19,23 @@ function Chat() {
     });
     return () => unsubscribe();
   }, []);
+
+  useEffect(() => {
+    if (user) {
+      fetchAndDisplayOldChats();
+    }
+  }, [user]);
+
+  const loadChat = (chatId, messages) => {
+    console.log("Loading chat:", chatId, messages);
+    setCurrentChatId(chatId);
+    setMessages(
+      messages.map((msg) => ({
+        text: msg.content,
+        sender: msg.role === "user" ? "user" : "bot",
+      }))
+    );
+  };
 
   const sendMessageToApi = async (message, chatId = null) => {
     if (!user) {
@@ -139,6 +157,37 @@ function Chat() {
     setMessages([]);
   };
 
+  const fetchAndDisplayOldChats = async () => {
+    if (!user) {
+      console.error("No user logged in.");
+      return;
+    }
+
+    try {
+      const idToken = await user.getIdToken();
+      const url = `http://127.0.0.1:5000/get_all_user_chats?user_id=${user.uid}`;
+
+      const response = await fetch(url, {
+        method: "GET",
+        headers: {
+          Authorization: `Bearer ${idToken}`,
+        },
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        console.error("Error fetching old chats:", errorData.error);
+        return;
+      }
+
+      const chatsData = await response.json();
+      console.log("Old chats fetched successfully:", chatsData);
+      setHistoricalChats(chatsData);
+    } catch (error) {
+      console.error("Network error fetching old chats:", error);
+    }
+  };
+
   // Check browser support
   if (!("webkitSpeechRecognition" in window)) {
     alert(
@@ -147,69 +196,93 @@ function Chat() {
   }
 
   return (
-    <div className="flex flex-col h-full">
-      {/* Chat UI - this will be the main content area */}
-      <div className="flex flex-col h-full border rounded-lg p-4">
-        {" "}
-        {/* Main chat container */}
-        <div className="flex-grow overflow-y-auto">
-          {messages.map((msg, index) => (
-            <div
-              key={index}
-              className={`mb-2 flex ${
-                msg.sender === "user" ? "justify-end" : "justify-start"
-              }`}
-            >
-              {" "}
-              <span
-                className={`block p-2 rounded-lg w-fit max-w-[50%] ${
-                  msg.sender === "user" ? "bg-blue-200" : "bg-gray-200"
+    <div className="flex h-full">
+      {/* Sidebar for historical chats */}
+      <div className="w-1/5 bg-gray-100 p-4 overflow-y-auto border-r">
+        <h2 className="text-lg font-bold mb-4">Historical Chats</h2>
+        {Object.entries(historicalChats).length > 0 ? (
+          <ul>
+            {Object.entries(historicalChats).map(([chatId, messages]) => (
+              <li
+                key={chatId}
+                className={`cursor-pointer p-2 mb-2 rounded-lg ${
+                  currentChatId === chatId ? "bg-blue-200" : "hover:bg-gray-200"
+                }`}
+                onClick={() => loadChat(chatId, messages)}
+              >
+                Chat ID: {chatId}
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <p>No historical chats found.</p>
+        )}
+      </div>
+
+      {/* Main Chat UI */}
+      <div className="flex flex-col flex-grow h-full w-4/5">
+        <div className="flex flex-col h-full border rounded-lg p-4">
+          {" "}
+          {/* Main chat container */}
+          <div className="flex-grow overflow-y-auto">
+            {messages.map((msg, index) => (
+              <div
+                key={index}
+                className={`mb-2 flex ${
+                  msg.sender === "user" ? "justify-end" : "justify-start"
                 }`}
               >
                 {" "}
-                {msg.text}
-              </span>
+                <span
+                  className={`block p-2 rounded-lg w-fit max-w-[50%] ${
+                    msg.sender === "user" ? "bg-blue-200" : "bg-gray-200"
+                  }`}
+                >
+                  {" "}
+                  {msg.text}
+                </span>
+              </div>
+            ))}
+          </div>
+          <div className="flex flex-col sm:flex-row mt-4">
+            <input
+              type="text"
+              className="flex-grow border rounded-lg p-2 focus:outline-none mb-2 sm:mb-0"
+              placeholder="Type your message..."
+              value={input}
+              onChange={(e) => setInput(e.target.value)}
+              onKeyPress={(e) => {
+                if (e.key === "Enter") {
+                  handleSendMessage();
+                }
+              }}
+            />
+            <div className="flex flex-row sm:ml-2 mb-2 sm:mb-0">
+              <button
+                className="bg-green-500 hover:bg-green-700 text-white font-bold py-2 px-3 rounded-lg flex-1"
+                onClick={handleSendMessage}
+              >
+                Send
+              </button>
+              <button
+                onClick={toggleStart}
+                className="bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-3 rounded-lg ml-2 flex-1"
+                aria-label="Toggle Speech Recognition"
+              >
+                <img
+                  src={microphoneIcon}
+                  alt="Microphone Icon"
+                  className="w-5 h-5 inline-block"
+                />
+              </button>
             </div>
-          ))}
-        </div>
-        <div className="flex flex-col sm:flex-row mt-4">
-          <input
-            type="text"
-            className="flex-grow border rounded-lg p-2 focus:outline-none mb-2 sm:mb-0"
-            placeholder="Type your message..."
-            value={input}
-            onChange={(e) => setInput(e.target.value)}
-            onKeyPress={(e) => {
-              if (e.key === "Enter") {
-                handleSendMessage();
-              }
-            }}
-          />
-          <div className="flex flex-row sm:ml-2 mb-2 sm:mb-0">
             <button
-              className="bg-green-500 hover:bg-green-700 text-white font-bold py-2 px-3 rounded-lg flex-1"
-              onClick={handleSendMessage}
+              className="bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-3 rounded-lg sm:ml-2 w-full sm:w-auto mt-2 sm:mt-0"
+              onClick={handleNewChat}
             >
-              Send
-            </button>
-            <button
-              onClick={toggleStart}
-              className="bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-3 rounded-lg ml-2 flex-1"
-              aria-label="Toggle Speech Recognition"
-            >
-              <img
-                src={microphoneIcon}
-                alt="Microphone Icon"
-                className="w-5 h-5 inline-block"
-              />
+              New Chat
             </button>
           </div>
-          <button
-            className="bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-3 rounded-lg sm:ml-2 w-full sm:w-auto mt-2 sm:mt-0"
-            onClick={handleNewChat}
-          >
-            New Chat
-          </button>
         </div>
       </div>
     </div>
