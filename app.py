@@ -7,19 +7,13 @@ import datetime
 from flask_cors import CORS
 from google import genai
 from google.genai import types
-from google_auth_oauthlib.flow import Flow
-from googleapiclient.discovery import build
-from google.oauth2.credentials import Credentials
 
 import firebase_admin
 from firebase_admin import credentials, auth, firestore
 
 # --- Firebase Admin SDK Initialization ---
-# It's recommended to use a service account for backend authentication.
-# Make sure the GOOGLE_APPLICATION_CREDENTIALS environment variable is set,
-# or provide the path to your service account key file directly.
 try:
-    cred = credentials.Certificate("hackgt2025-firebase-adminsdk-fbsvc-1c9237b900.json")
+    cred = credentials.ApplicationDefault()
     firebase_admin.initialize_app(cred)
     db = firestore.client()
     print("✅ Firebase Admin SDK initialized successfully.")
@@ -39,24 +33,20 @@ client = genai.Client()
 @app.before_request
 def verify_token():
     g.user = None
-    id_token = request.headers.get('Authorization', '').split('Bearer ')[-1]
-    if id_token:
+    auth_header = request.headers.get('Authorization', '')
+    if auth_header.startswith('Bearer '):
+        id_token = auth_header.split('Bearer ')[1]
         try:
             decoded_token = auth.verify_id_token(id_token)
             g.user = decoded_token
         except Exception as e:
             print(f"🔥 Error verifying token: {e}")
-            # Optionally, you could return a 401 Unauthorized response here
-            # return jsonify({"error": "Unauthorized"}), 401
-            pass # For now, we'll let unauthenticated requests through to public endpoints
 
 def get_user_context(uid):
     # TODO: Fetch user-specific context from Firestore
-    # For example, you could fetch the last 10 messages from a user's chat history.
     return f"This is the context for user {uid}."
 
 # --- Chat History Functions ---
-
 def start_or_get_chat(user_id, chat_id=None):
     """
     Starts a new chat in Firestore if no chat_id is provided,
@@ -81,18 +71,43 @@ def add_message_to_chat(user_id, chat_id, role, content):
     Adds a message to a specific chat's 'messages' array in Firestore.
     """
     chat_ref = db.collection('users').document(user_id).collection('chats').document(chat_id)
-    
     message = {
         'role': role,
         'content': content,
         'timestamp': datetime.datetime.now(datetime.timezone.utc)
     }
-    
     # Atomically add the new message to the 'messages' array
     chat_ref.update({
         'messages': firestore.ArrayUnion([message])
     })
 
+# Direct Google Calendar API calls
+def fetch_events_direct(access_token, max_results=15):
+    """Direct API call to Google Calendar"""
+    url = "https://www.googleapis.com/calendar/v3/calendars/primary/events"
+    headers = {"Authorization": f"Bearer {access_token}"}
+    params = {
+        "maxResults": max_results,
+        "orderBy": "startTime",
+        "singleEvents": "true",
+        "timeMin": datetime.datetime.now(datetime.timezone.utc).isoformat()
+    }
+    
+    response = requests.get(url, headers=headers, params=params)
+    if response.status_code == 200:
+        return response.json().get("items", [])
+    else:
+        print(f"Calendar API error: {response.status_code} - {response.text}")
+        return []
+
+def create_event_direct(access_token, name, start_time, end_time):
+    """Direct API call to create calendar event"""
+    url = "https://www.googleapis.com/calendar/v3/calendars/primary/events"
+    headers = {
+        "Authorization": f"Bearer {access_token}",
+        "Content-Type": "application/json"
+    }
+    event_data = {
 def get_user_chats(user_id):
     """
     Fetches all chat IDs and their basic information for a given user.
@@ -194,19 +209,17 @@ def create_event(creds, name, start_time, end_time):
 
 
 # Routes
-
-@app.route("/api/cal/events")
-def events():
-    creds = get_credentials()
-    if not creds:
-        return jsonify({"error": "Not authorized"}), 401
+@app.route("/api/cal/events", methods=["POST"])
+def get_events():
+    """Get calendar events using access token from request"""
+    if not request.json or 'accessToken' not in request.json:
+        return jsonify({"error": "Missing accessToken in request body"}), 400
     
-    events = fetch_events(creds)
+    access_token = request.json['accessToken']
+    events = fetch_events_direct(access_token)
     return jsonify({"events": events})
 
-
 # Function Calling
-
 schedule_meeting_function = {
     "name": "schedule_meeting",
     "description": "Schedules a meeting with specified attendees at a given time and date.",
@@ -231,7 +244,18 @@ schedule_meeting_function = {
                 "description": "The subject or topic of the meeting.",
             },
         },
-        "required": ["attendees", "date", "time", "topic"],
+        "required": ["date", "time", "topic"],
+    },
+}
+
+get_time_function = {
+    "name": "get_time",
+    "description": "Gets the current user's time",
+    "parameters": {
+        "type": "object",
+        "properties": {
+        },
+        "required": [],
     },
 }
 
@@ -247,7 +271,7 @@ def handle_schedule_meeting(args):
         }
 
     try:
-        # The model might not provide all arguments, so we use .get()
+        print("scheduling meeting")
         topic = args.get('topic', 'Meeting')
         date = args.get('date')
         time = args.get('time')
@@ -263,14 +287,16 @@ def handle_schedule_meeting(args):
         return {"response": f"I've scheduled a meeting about '{topic}'. Quack.", "event": event}
 
     except Exception as e:
-        return {"error": f"Error creating event: {str(e)}"}
+        return jsonify({"error": f"Error creating event: {str(e)}"}), 500
 
 def execute_function_call(function_call):
     """Executes the appropriate function based on the model's call and returns a dictionary."""
     if function_call.name == 'schedule_meeting':
-        return handle_schedule_meeting(function_call.args)
+        return handle_schedule_meeting(function_call.args, access_token)
+    else if function_call.name = "get_time"
+
     else:
-        return {"error": f"Unknown function call: {function_call.name}"}
+        return jsonify({"error": f"Unknown function call: {function_call.name}"}), 400
 
 def handle_gemini_response(response):
     """Processes the response from the Gemini model and returns a dictionary."""
@@ -278,12 +304,11 @@ def handle_gemini_response(response):
         function_call = response.candidates[0].content.parts[0].function_call
         print(f"Function to call: {function_call.name}")
         print(f"Arguments: {function_call.args}")
-        return execute_function_call(function_call)
+        return execute_function_call(function_call, access_token)
     else:
-        # No function call, just return the text response
         print("No function call found in the response.")
         print(response.text)
-        return {"response": str(response.text) + " Quack."}
+        return jsonify({"response": str(response.text) + " Quack."}), 200
 
 @app.route("/api/generate", methods=["POST"])
 def generate():
@@ -293,11 +318,9 @@ def generate():
     prompt = request.json['prompt']
     try:
         response = client.models.generate_content(model="gemini-2.5-flash", contents=prompt)
-        print(response.text)
         return jsonify({"response": response.text})
     except Exception as e:
         return jsonify({"error": str(e)}), 500
-
 
 @app.route("/api/toolcall", methods=["POST"])
 def genwithtools():
@@ -346,7 +369,7 @@ def genwithtools():
 
         response = client.models.generate_content(
             model="gemini-2.5-flash",
-            contents=contents,
+            contents=[system_instructions, prompt],
             config=config,
         )
 
@@ -362,7 +385,7 @@ def genwithtools():
         return jsonify(agent_response_data)
 
     except Exception as e:
-        print(f"Error in /api/toolcall: {e}") # Log the error for debugging
+        print(f"Error in /api/toolcall: {e}")  # Log the error for debugging
         return jsonify({"error": str(e)}), 500
 
 @app.route('/get_user_chats', methods=['GET'])
@@ -410,4 +433,4 @@ def get_all_user_chats_route():
 
 
 if __name__ == "__main__":
-    app.run("localhost", 5000, debug=True)
+    app.run("localhost", 5000, debug=True, use_reloader=False)

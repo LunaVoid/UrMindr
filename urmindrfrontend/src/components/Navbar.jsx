@@ -19,6 +19,7 @@ function Navbar({ setAccessToken, user }) {
       const credential = GoogleAuthProvider.credentialFromResult(result);
       const token = credential.accessToken;
       setAccessToken(token);
+      sessionStorage.setItem("accessToken", token);
     } catch (error) {
       console.error("Error signing in:", error);
     }
@@ -30,6 +31,9 @@ function Navbar({ setAccessToken, user }) {
       // Clear the access token from session storage on sign out
       sessionStorage.removeItem("accessToken");
       setAccessToken(null);
+      const navigate = useNavigate();
+
+      navigate('/');
     } catch (error) {
       console.error("Error signing out:", error);
     }
