@@ -1,9 +1,7 @@
-from dotenv import load_dotenv
-load_dotenv()
-
-from flask import Flask, redirect, url_for, session, request, render_template_string, jsonify, g
+from flask import Flask, redirect, url_for, session, request, render_template_string
 import os
 import datetime
+from flask import jsonify
 from flask_cors import CORS
 from google import genai
 from dotenv import load_dotenv
@@ -12,55 +10,13 @@ from google_auth_oauthlib.flow import Flow
 from googleapiclient.discovery import build
 from google.oauth2.credentials import Credentials
 
-import firebase_admin
-from firebase_admin import credentials, auth, firestore
 
-# --- Firebase Admin SDK Initialization ---
-# It's recommended to use a service account for backend authentication.
-# Make sure the GOOGLE_APPLICATION_CREDENTIALS environment variable is set,
-# or provide the path to your service account key file directly.
-try:
-    cred = credentials.Certificate("credentials.json")
-    firebase_admin.initialize_app(cred)
-    print("✅ Firebase Admin SDK initialized successfully.")
-except Exception as e:
-    print(f"🔥 Error initializing Firebase Admin SDK: {e}")
-# -----------------------------------------
-
-os.environ['OAUTHLIB_INSECURE_TRANSPORT'] = '1' # DANGER: This is for local development only. Remove in production.
+os.environ['OAUTHLIB_INSECURE_TRANSPORT'] = '1' # is this bad
 app = Flask(__name__)
 app.secret_key = os.urandom(24)
 CORS(app, supports_credentials=True)
 client = genai.Client()
 
-# --- Firebase Admin SDK Initialization ---
-try:
-    cred = credentials.ApplicationDefault()
-    firebase_admin.initialize_app(cred)
-    print("✅ Firebase Admin SDK initialized successfully.")
-except Exception as e:
-    print(f"🔥 Error initializing Firebase Admin SDK: {e}")
-# -----------------------------------------
-
-# Middleware to verify Firebase ID token
-@app.before_request
-def verify_token():
-    g.user = None
-    id_token = request.headers.get('Authorization', '').split('Bearer ')[-1]
-    if id_token:
-        try:
-            decoded_token = auth.verify_id_token(id_token)
-            g.user = decoded_token
-        except Exception as e:
-            print(f"🔥 Error verifying token: {e}")
-            # Optionally, you could return a 401 Unauthorized response here
-            # return jsonify({"error": "Unauthorized"}), 401
-            pass # For now, we'll let unauthenticated requests through to public endpoints
-
-def get_user_context(uid):
-    # TODO: Fetch user-specific context from Firestore
-    # For example, you could fetch the last 10 messages from a user's chat history.
-    return f"This is the context for user {uid}."
 
 # Google OAuth settings
 SCOPES = [
@@ -149,7 +105,7 @@ def create_event(creds, name, start_time, end_time):
         "end": {"dateTime": end_time.isoformat(), "timeZone": "UTC"},
     }
     created_event = service.events().insert(calendarId="primary", body=event).execute()
-    return created_event
+    return jsonify({"event": created_event})
 
 
 # Routes
@@ -252,56 +208,6 @@ schedule_meeting_function = {
     },
 }
 
-def handle_schedule_meeting(args):
-    """Handles the logic for the 'schedule_meeting' tool."""
-    creds = get_credentials()
-    if not creds:
-        # If no credentials, we need to initiate the OAuth flow
-        auth_url = authorize_flow()
-        return jsonify({
-            "response": "I need to authorize with your Google Calendar first.",
-            "authorization_url": auth_url
-        }), 200
-
-    try:
-        # The model might not provide all arguments, so we use .get()
-        topic = args.get('topic', 'Meeting')
-        date = args.get('date')
-        time = args.get('time')
-        
-        if not date or not time:
-            return jsonify({"response": "I need a date and time to schedule the meeting. Quack."}), 200
-
-        start_datetime_str = f"{date}T{time}"
-        start_datetime = datetime.datetime.fromisoformat(start_datetime_str)
-        end_datetime = start_datetime + datetime.timedelta(hours=1) # Assume 1-hour meetings
-
-        event = create_event(creds, topic, start_datetime, end_datetime)
-        return jsonify({"response": f"I've scheduled a meeting about '{topic}'. Quack.", "event": event}), 200
-
-    except Exception as e:
-        return jsonify({"error": f"Error creating event: {str(e)}"}), 500
-
-def execute_function_call(function_call):
-    """Executes the appropriate function based on the model's call."""
-    if function_call.name == 'schedule_meeting':
-        return handle_schedule_meeting(function_call.args)
-    else:
-        return jsonify({"error": f"Unknown function call: {function_call.name}"}), 400
-
-def handle_gemini_response(response):
-    """Processes the response from the Gemini model."""
-    if response.candidates and response.candidates[0].content.parts[0].function_call:
-        function_call = response.candidates[0].content.parts[0].function_call
-        print(f"Function to call: {function_call.name}")
-        print(f"Arguments: {function_call.args}")
-        return execute_function_call(function_call)
-    else:
-        # No function call, just return the text response
-        print("No function call found in the response.")
-        print(response.text)
-        return jsonify({"response": str(response.text) + " Quack."}), 200
-
 @app.route("/api/generate", methods=["POST"])
 def generate():
     if not request.json or 'prompt' not in request.json:
@@ -318,29 +224,39 @@ def generate():
 
 @app.route("/api/toolcall", methods=["POST"])
 def genwithtools():
-    if not g.user:
-        return jsonify({"error": "Unauthorized"}), 401
+    tools = types.Tool(function_declarations=[schedule_meeting_function])
+    config = types.GenerateContentConfig(tools=[tools])
 
     if not request.json or 'prompt' not in request.json:
         return jsonify({"error": "Missing 'prompt' in request body"}), 400
 
-    prompt = request.json['prompt']
-    user_context = get_user_context(g.user['uid'])
+    system_instructions = "You are a duck assistant that can schedule meetings. Always try to use the 'schedule_meeting' tool when appropriate and always end with a quack."
     
-    system_instructions = f"""You are a duck assistant that can schedule meetings. 
-                             Always try to use the 'schedule_meeting' tool when appropriate and always end with a quack.
-                             Here is some context about the user: {user_context}"""
-
-    tools = types.Tool(function_declarations=[schedule_meeting_function])
-    config = types.GenerateContentConfig(tools=[tools])
+    prompt = request.json['prompt']
 
     try:
+        # "Schedule a meeting with Bob and Alice for 03/14/2025 at 10:00 AM about the Q3 planning."
+        # Send request with function declarations
         response = client.models.generate_content(
-            model="gemini-2.5-flash",
-            contents=[system_instructions, prompt],
-            config=config,
+        model="gemini-2.5-flash",
+        contents=[system_instructions, prompt],
+        config=config,
         )
-        return handle_gemini_response(response)
+
+        # Check for a function call
+        if response.candidates[0].content.parts[0].function_call:
+            function_call = response.candidates[0].content.parts[0].function_call
+            print(f"Function to call: {function_call.name}")
+            print(f"Arguments: {function_call.args}")
+            #result = schedule_meeting(function_call.args)
+            return jsonify({"response": "Here is what I'm doing:" + str(function_call.name)+" " + str(function_call.args)}), 200
+        
+           
+        else:
+            print("No function call found in the response.")
+            print(response.text)
+            return jsonify({"response": str(response.text) + "None Called"}), 200
+        
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
