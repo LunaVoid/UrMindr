@@ -46,7 +46,10 @@ function App() {
           <Routes>
             <Route path="/" element={user ? <Home user={user} accessToken={accessToken} /> : <Landing setAccessToken={setAccessToken} />} />
             <Route path="/chat" element={<Chat />} />
-            <Route path="/calendar" element={<Calendar accessToken={accessToken}/>} />
+            <Route
+              path="/calendar"
+              element={<Calendar accessToken={accessToken} />}
+/>
           </Routes>
         </main>
       </div>

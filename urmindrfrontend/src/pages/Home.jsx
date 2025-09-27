@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { Link } from "react-router-dom"; 
 
 function Home({ user, accessToken }) {
   const [events, setEvents] = useState([]);
@@ -132,6 +133,12 @@ function Home({ user, accessToken }) {
         <h1 className="text-4xl font-bold mb-4">Account Information</h1>
         <p className="text-lg">Welcome, {user.displayName}!</p>
         <p className="text-lg mb-8">Email: {user.email}</p>
+
+        <Link to="/calendar">
+          <button className="bg-green-500 hover:bg-green-700 text-white font-bold py-2 px-4 rounded mb-6">
+            Go to Calendar
+          </button>
+        </Link>
 
         <div className="bg-white p-6 rounded-lg shadow-md mb-8">
           <h2 className="text-2xl font-bold mb-4">Create New Event</h2>

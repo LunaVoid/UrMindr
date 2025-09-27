@@ -5,41 +5,42 @@ import timeGridPlugin from "@fullcalendar/timegrid";
 import interactionPlugin from "@fullcalendar/interaction";
 
 function MyCalendar({ token }) {
-  const [events, setEvents] = useState([
-    { title: "Initial Event", start: "2025-09-27" },
-  ]);
+  const [events, setEvents] = useState([]);
 
   // Fetch events from Google Calendar when token changes
   useEffect(() => {
     if (!token) return;
 
-    fetch(
-      "https://www.googleapis.com/calendar/v3/calendars/primary/events?singleEvents=true",
-      {
-        headers: { Authorization: `Bearer ${token}` },
-      }
-    )
-      .then((res) => res.json())
-      .then((data) => {
-        // Map Google events to FullCalendar format
-        const formattedEvents = data.items
-          .filter((event) => event.summary && event.start && event.end)
-          .map((event) => ({
-            title: event.summary,
-            start: event.start.dateTime || event.start.date,
-            end: event.end.dateTime || event.end.date,
-          }));
-        setEvents(formattedEvents);
-      })
-      .catch((err) => console.error("Error fetching events:", err));
-  }, [token]);
+    const fetchEvents = async () => {
+      try {
+        const timeMin = new Date().toISOString(); // only future events
+        const res = await fetch(
+          `https://www.googleapis.com/calendar/v3/calendars/primary/events?singleEvents=true&orderBy=startTime&timeMin=${timeMin}`,
+          {
+            headers: { Authorization: `Bearer ${token}` },
+          }
+        );
+        const data = await res.json();
 
-  const handleDateClick = (arg) => {
-    const title = prompt("Enter event title:");
-    if (title) {
-      setEvents([...events, { title, start: arg.dateStr }]);
-    }
-  };
+        if (data.error) {
+          console.error("Google Calendar API error:", data.error);
+          return;
+        }
+
+        const calendarEvents = (data.items || []).map((event) => ({
+          id: event.id,
+          title: event.summary || "(No Title)",
+          start: event.start.dateTime || event.start.date,
+          end: event.end?.dateTime || event.end?.date,
+        }));
+        setEvents(calendarEvents);
+      } catch (err) {
+        console.error("Failed to fetch events:", err);
+      }
+    };
+
+    fetchEvents();
+  }, [token]);
 
   return (
     <div>
@@ -47,16 +48,9 @@ function MyCalendar({ token }) {
         plugins={[dayGridPlugin, timeGridPlugin, interactionPlugin]}
         initialView="dayGridMonth"
         events={events}
-        dateClick={handleDateClick}
         editable={true}
         selectable={true}
       />
-      <button
-        onClick={() => console.log("Connect Calendar clicked")}
-        className="bg-green-500 text-white px-4 py-2 rounded mt-4"
-      >
-        Connect Google Calendar
-      </button>
     </div>
   );
 }
