@@ -1,9 +1,9 @@
-import { useState, useEffect } from 'react';
-import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
-import { getAuth, onAuthStateChanged } from 'firebase/auth';
-import Navbar from './components/Navbar';
-import Landing from './pages/Landing';
-import Account from './pages/Account';
+import { useState, useEffect } from "react";
+import { BrowserRouter as Router, Routes, Route } from "react-router-dom";
+import { getAuth, onAuthStateChanged } from "firebase/auth";
+import Navbar from "./components/Navbar";
+import Landing from "./pages/Landing";
+import Home from "./pages/Home";
 
 function App() {
   const [user, setUser] = useState(null);
@@ -27,7 +27,7 @@ function App() {
     <Router>
       <Navbar user={user} />
       <Routes>
-        <Route path="/" element={user ? <Account user={user} /> : <Landing />} />
+        <Route path="/" element={user ? <Home user={user} /> : <Landing />} />
       </Routes>
     </Router>
   );
