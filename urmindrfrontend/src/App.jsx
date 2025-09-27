@@ -38,12 +38,16 @@ function App() {
 
   return (
     <Router>
-      <Navbar user={user}/>
-      <Routes>
-        <Route path="/" element={user ? <Home user={user} accessToken={accessToken} /> : <Landing setAccessToken={setAccessToken} />} />
-        <Route path="/chat" element={<Chat />} />
-        <Route path="/calendar" element={<Calendar />} />
-      </Routes>
+      <div className="flex flex-col h-screen">
+        <Navbar user={user}/>
+        <main className="flex-grow overflow-y-auto">
+          <Routes>
+            <Route path="/" element={user ? <Home user={user} accessToken={accessToken} /> : <Landing setAccessToken={setAccessToken} />} />
+            <Route path="/chat" element={<Chat />} />
+            <Route path="/calendar" element={<Calendar />} />
+          </Routes>
+        </main>
+      </div>
     </Router>
   );
 }
