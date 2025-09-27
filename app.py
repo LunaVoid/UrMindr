@@ -111,7 +111,7 @@ def create_event(creds, name, start_time, end_time):
 # Routes
 
 # Calendar
-@app.route("/api/cal/getevents")
+@app.route("/api/cal/events")
 def index():
     creds = get_credentials()
     if creds:
@@ -229,6 +229,8 @@ def genwithtools():
 
     if not request.json or 'prompt' not in request.json:
         return jsonify({"error": "Missing 'prompt' in request body"}), 400
+
+    system_instructions = "You are a duck assistant that can schedule meetings. Always try to use the 'schedule_meeting' tool when appropriate and always end with a quack."
     
     prompt = request.json['prompt']
 
@@ -237,7 +239,7 @@ def genwithtools():
         # Send request with function declarations
         response = client.models.generate_content(
         model="gemini-2.5-flash",
-        contents=prompt,
+        contents=[system_instructions, prompt],
         config=config,
         )
 
@@ -246,13 +248,14 @@ def genwithtools():
             function_call = response.candidates[0].content.parts[0].function_call
             print(f"Function to call: {function_call.name}")
             print(f"Arguments: {function_call.args}")
-            return jsonify({"function": str(function_call.name)+" " + str(function_call.args)}), 200
+            #result = schedule_meeting(function_call.args)
+            return jsonify({"response": "Here is what I'm doing:" + str(function_call.name)+" " + str(function_call.args)}), 200
         
-        #  result = schedule_meeting(**function_call.args)
+           
         else:
             print("No function call found in the response.")
             print(response.text)
-            return jsonify({"function": "None Called"}), 200
+            return jsonify({"response": str(response.text) + "None Called"}), 200
         
     except Exception as e:
         return jsonify({"error": str(e)}), 500

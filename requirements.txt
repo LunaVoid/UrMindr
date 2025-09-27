@@ -1,3 +1,5 @@
 flask
 google_auth_oauthlib
 google-api-python-client
+google-genai
+firebase-admin
