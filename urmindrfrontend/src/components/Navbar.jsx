@@ -19,6 +19,7 @@ function Navbar({ setAccessToken, user }) {
       const credential = GoogleAuthProvider.credentialFromResult(result);
       const token = credential.accessToken;
       setAccessToken(token);
+      sessionStorage.setItem("accessToken", token);
     } catch (error) {
       console.error("Error signing in:", error);
     }

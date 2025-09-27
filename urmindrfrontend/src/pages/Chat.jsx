@@ -1,7 +1,6 @@
 import React from "react";
 import { useState, useEffect } from "react";
 import { getAuth, onAuthStateChanged } from "firebase/auth";
-
 import microphoneIcon from "../assets/microphone icon.png";
 
 function Chat() {
@@ -10,6 +9,11 @@ function Chat() {
   const [input, setInput] = useState("");
   const [user, setUser] = useState(null);
   const [currentChatId, setCurrentChatId] = useState(null);
+  const googleAccessToken = sessionStorage.getItem("accessToken");
+  if(!googleAccessToken){
+    console.error("No access token redirect to signup?")
+  }
+
 
   useEffect(() => {
     const auth = getAuth();
@@ -45,7 +49,9 @@ function Chat() {
           "Content-Type": "application/json",
           Authorization: `Bearer ${idToken}`,
         },
-        body: JSON.stringify(requestBody),
+        body: JSON.stringify({...requestBody,
+          accessToken: googleAccessToken
+        }),
       });
 
       const result = await response.json();
