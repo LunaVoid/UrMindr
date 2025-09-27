@@ -313,6 +313,7 @@ def genwithtools():
         
         system_instructions = f"""You are a duck assistant that can schedule meetings. 
                                  Always try to use the 'schedule_meeting' tool when appropriate and always end with a quack.
+                                 You should always consider the entire conversation history provided to generate your response.
                                  Here is some context about the user: {user_context}"""
 
         tools = types.Tool(function_declarations=[schedule_meeting_function])
