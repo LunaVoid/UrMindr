@@ -1,13 +1,15 @@
-import { Link } from 'react-router-dom';
+import { Link, useNavigate} from 'react-router-dom';
 import { getAuth, signOut, GoogleAuthProvider, signInWithPopup } from 'firebase/auth';
 
-function Navbar({ user }) {
+function Navbar({ setAccessToken, user }) {
   const auth = getAuth();
   const provider = new GoogleAuthProvider();
+  const navigate = useNavigate();
 
   const handleSignIn = async () => {
     try {
       await signInWithPopup(auth, provider);
+
     } catch (error) {
       console.error('Error signing in:', error);
     }
@@ -19,6 +21,10 @@ function Navbar({ user }) {
     } catch (error) {
       console.error('Error signing out:', error);
     }
+  };
+
+  const handleCalendarClick = () => {
+    navigate('/calendar'); 
   };
 
   return (
@@ -39,6 +45,7 @@ function Navbar({ user }) {
             </button>
           )}
         </div>
+        <button onClick = {handleCalendarClick} className = "button"> Calendar</button>
       </div>
     </nav>
   );

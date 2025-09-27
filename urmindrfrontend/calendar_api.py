@@ -97,10 +97,10 @@ def handle_oauth2_callback():
     session["credentials"] = creds_to_dict(creds)
 
 
-def create_event(creds, name, start_time, end_time):
+def create_event(creds, summary, start_time, end_time):
     service = build("calendar", "v3", credentials=creds)
     event = {
-        "name": name,
+        "summary": name,
         "start": {"dateTime": start_time.isoformat(), "timeZone": "UTC"},
         "end": {"dateTime": end_time.isoformat(), "timeZone": "UTC"},
     }
