@@ -28,6 +28,7 @@ function App() {
       <Navbar user={user} />
       <Routes>
         <Route path="/" element={user ? <Home user={user} /> : <Landing />} />
+        <Route path="/chat" element={<Chat />} />
       </Routes>
     </Router>
   );
