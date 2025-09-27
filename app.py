@@ -15,6 +15,7 @@ from firebase_admin import credentials, auth, firestore
 try:
     cred = credentials.ApplicationDefault()
     firebase_admin.initialize_app(cred)
+    db = firestore.client()
     print("✅ Firebase Admin SDK initialized successfully.")
 except Exception as e:
     print(f"🔥 Error initializing Firebase Admin SDK: {e}")
@@ -51,7 +52,6 @@ def start_or_get_chat(user_id, chat_id=None):
     Starts a new chat in Firestore if no chat_id is provided,
     otherwise returns the provided chat_id.
     """
-    db = firestore.client()
     user_chats_ref = db.collection('users').document(user_id).collection('chats')
     
     if chat_id:
@@ -70,7 +70,6 @@ def add_message_to_chat(user_id, chat_id, role, content):
     """
     Adds a message to a specific chat's 'messages' array in Firestore.
     """
-    db = firestore.client()
     chat_ref = db.collection('users').document(user_id).collection('chats').document(chat_id)
     message = {
         'role': role,
@@ -109,6 +108,98 @@ def create_event_direct(access_token, name, start_time, end_time):
         "Content-Type": "application/json"
     }
     event_data = {
+def get_user_chats(user_id):
+    """
+    Fetches all chat IDs and their basic information for a given user.
+    """
+    user_chats_ref = db.collection('users').document(user_id).collection('chats')
+    chats = {}
+    for chat_doc in user_chats_ref.stream():
+        chats[chat_doc.id] = chat_doc.to_dict()
+    return chats
+
+# Google OAuth settings
+SCOPES = [
+    "https://www.googleapis.com/auth/calendar",
+    "https://www.googleapis.com/auth/calendar.readonly"
+]
+CLIENT_SECRETS_FILE = "credentials.json"  
+REDIRECT_URI = "http://localhost:5000/oauth2callback"  
+
+def creds_to_dict(creds):
+    return {
+        "token": creds.token,
+        "refresh_token": creds.refresh_token,
+        "token_uri": creds.token_uri,
+        "client_id": creds.client_id,
+        "client_secret": creds.client_secret,
+        "scopes": creds.scopes,
+    }
+
+def get_credentials():
+    if "credentials" in session:
+        creds = Credentials(**session["credentials"])
+        session["credentials"] = creds_to_dict(creds)  # refresh in session
+        return creds
+    return None
+
+def fetch_events(creds, max_results=10):
+    """Fetch upcoming events from Google Calendar"""
+    service = build("calendar", "v3", credentials=creds)
+    now = datetime.datetime.now(datetime.timezone.utc).isoformat()
+    events_result = (
+        service.events()
+        .list(
+            calendarId="primary",
+            timeMin=now,
+            maxResults=max_results,
+            singleEvents=True,
+            orderBy="startTime",
+        )
+        .execute()
+    )
+    return events_result.get("items", [])
+
+def authorize_flow():
+    flow = Flow.from_client_secrets_file(
+        CLIENT_SECRETS_FILE,
+        scopes=SCOPES,
+        redirect_uri=REDIRECT_URI,
+    )
+    authorization_url, state = flow.authorization_url(
+        access_type="offline", 
+        include_granted_scopes="true"
+    )
+    session["state"] = state
+    return authorization_url
+
+def display_events(events):
+    html = "<h2>Upcoming Events:</h2><ul>"
+    for event in events:
+        start = event["start"].get("dateTime", event["start"].get("date"))
+        html += f"<li>{start}: {event.get('summary', 'No Title')}</li>"
+    html += "</ul>"
+    html += '<a href="/logout">Logout</a>'
+    return html
+
+def handle_oauth2_callback():
+    state = session.get("state")  
+    if not state: 
+        return redirect(url_for("authorize"))
+    
+    flow = Flow.from_client_secrets_file(
+        CLIENT_SECRETS_FILE,
+        scopes=SCOPES,
+        state=state,
+        redirect_uri=REDIRECT_URI,
+    )
+    flow.fetch_token(authorization_response=request.url)
+    creds = flow.credentials
+    session["credentials"] = creds_to_dict(creds)
+
+def create_event(creds, name, start_time, end_time):
+    service = build("calendar", "v3", credentials=creds)
+    event = {
         "summary": name,
         "start": {"dateTime": start_time.isoformat(), "timeZone": "UTC"},
         "end": {"dateTime": end_time.isoformat(), "timeZone": "UTC"},
@@ -294,6 +385,50 @@ def genwithtools():
     except Exception as e:
         print(f"Error in /api/toolcall: {e}")  # Log the error for debugging
         return jsonify({"error": str(e)}), 500
+
+@app.route('/get_user_chats', methods=['GET'])
+def get_user_chats_route():
+    user_id = request.args.get('user_id')
+    if not user_id:
+        return jsonify({"error": "User ID is required"}), 400
+    
+    chats = get_user_chats(user_id)
+    return jsonify(chats), 200
+
+@app.route('/get_all_user_chats', methods=['GET'])
+def get_all_user_chats_route():
+    user_id = request.args.get('user_id')
+    if not user_id:
+        return jsonify({"error": "User ID is required"}), 400
+
+    try:
+        chats_data = {}
+        chats = get_user_chats(user_id)
+        for chat_id, chat_info in chats.items():
+            # Retrieve the chat document to get the messages array
+            chat_doc_ref = db.collection('users').document(user_id).collection('chats').document(chat_id)
+            chat_doc = chat_doc_ref.get()
+            
+            messages = []
+            if chat_doc.exists and 'messages' in chat_doc.to_dict():
+                messages = chat_doc.to_dict()['messages']
+            
+            print(f"  Messages for chat {chat_id}: {messages}") # Debug print
+            chats_data[chat_id] = messages
+        
+        print(f"All chats for user {user_id}:")
+        for chat_id, messages in chats_data.items():
+            print(f"  Chat ID: {chat_id}")
+            for msg in messages:
+                print(f"    - {msg.get('sender')}: {msg.get('text')}")
+        
+        return jsonify(chats_data), 200
+    except Exception as e:
+        print(f"Error fetching all user chats for user {user_id}: {e}")
+        return jsonify({"error": str(e)}), 500
+
+
+
 
 if __name__ == "__main__":
     app.run("localhost", 5000, debug=True, use_reloader=False)
