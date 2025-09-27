@@ -9,6 +9,9 @@ import Chat from "./pages/Chat";
 function App() {
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [accessToken, setAccessToken] = useState(() => {
+    return sessionStorage.getItem("accessToken");
+  });
   const auth = getAuth();
 
   useEffect(() => {
@@ -20,6 +23,12 @@ function App() {
     return () => unsubscribe();
   }, [auth]);
 
+  useEffect(() => {
+    if (accessToken) {
+      sessionStorage.setItem("accessToken", accessToken);
+    }
+  }, [accessToken]);
+
   if (loading) {
     return <div>Loading...</div>;
   }
@@ -28,7 +37,7 @@ function App() {
     <Router>
       <Navbar user={user} />
       <Routes>
-        <Route path="/" element={user ? <Home user={user} /> : <Landing />} />
+        <Route path="/" element={user ? <Home user={user} accessToken={accessToken} /> : <Landing setAccessToken={setAccessToken} />} />
         <Route path="/chat" element={<Chat />} />
       </Routes>
     </Router>

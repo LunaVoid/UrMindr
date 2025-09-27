@@ -1,41 +1,20 @@
 import { getAuth, GoogleAuthProvider, signInWithPopup } from "firebase/auth";
 
-function Landing() {
+function Landing({ setAccessToken }) {
   const auth = getAuth();
   const provider = new GoogleAuthProvider();
+  provider.addScope("https://www.googleapis.com/auth/calendar");
 
   const handleSignIn = async () => {
     try {
-      await signInWithPopup(auth, provider);
-      const user = XPathResult.user;
-      const idToken = await user.getIdToken();
-
-      const response = await fetch("http://localhost:5000/auth-url", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ idToken }),
-      });
-
-      const data = await response.json();
-      if (!response.ok) {
-        console.error("Error fetching auth URL:", data.error);
-        return;
-      }
+      const result = await signInWithPopup(auth, provider);
+      const credential = GoogleAuthProvider.credentialFromResult(result);
+      const token = credential.accessToken;
+      setAccessToken(token);
     } catch (error) {
       console.error("Error signing in:", error);
     }
   };
-
-  const client = google.accounts.oauth2.initCodeClient({
-  client_id: 'YOUR_CLIENT_ID',
-  scope: 'https://www.googleapis.com/auth/calendar.readonly',
-  access_type: 'offline',
-  ux_mode: 'popup',
-  callback: async (response) => {
-      // Send response.code to your backend
-    }
-  });
-client.requestCode();
 
   return (
     <div className="flex flex-col items-center justify-center min-h-screen bg-gray-100">

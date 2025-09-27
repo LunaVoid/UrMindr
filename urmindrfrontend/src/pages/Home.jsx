@@ -1,34 +1,42 @@
 import { useEffect, useState } from "react";
 
-function Home({ user }) {
+function Home({ user, accessToken }) {
+  const [events, setEvents] = useState([]);
+  const [error, setError] = useState(null);
 
-    const [events, setEvents] = useState([]);
+  useEffect(() => {
+    const fetchEvents = async () => {
+      if (!accessToken) {
+        return; // Do not fetch if accessToken is not available
+      }
 
-    useEffect(() => {
-      const fetchEvents = async () => {
       try {
-        const response = await fetch("http://localhost:5000/events", {
-          credentials: "include", // <-- important to include cookies/session
-        });
+        const timeMin = new Date().toISOString();
+        const response = await fetch(
+          `https://www.googleapis.com/calendar/v3/calendars/primary/events?maxResults=15&orderBy=startTime&singleEvents=true&timeMin=${timeMin}`,
+          {
+            headers: {
+              Authorization: `Bearer ${accessToken}`,
+            },
+          }
+        );
 
         if (!response.ok) {
-          if (response.status === 401) {
-            window.location.href = "http://localhost:5000/authorize"; // redirect to OAuth
-            return;
-          }
+          // Log the error response for more details
+          const errorData = await response.json();
+          console.error("Error fetching events:", errorData);
           throw new Error(`HTTP error! status: ${response.status}`);
         }
 
         const data = await response.json();
-        console.log("Fetched events:", data.events);
-        setEvents(data.events);
+        setEvents(data.items);
       } catch (error) {
-        console.error("Error fetching events:", error);
+        setError("Failed to fetch calendar events.");
       }
     };
-      fetchEvents();
 
-      }, []);
+    fetchEvents();
+  }, [accessToken]);
 
   const displayEvents = (events) => {
     if (!events || events.length === 0) {
