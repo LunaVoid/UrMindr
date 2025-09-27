@@ -19,8 +19,9 @@ from firebase_admin import credentials, auth, firestore
 # Make sure the GOOGLE_APPLICATION_CREDENTIALS environment variable is set,
 # or provide the path to your service account key file directly.
 try:
-    cred = credentials.Certificate("credentials.json")
+    cred = credentials.Certificate("hackgt2025-firebase-adminsdk-fbsvc-1c9237b900.json")
     firebase_admin.initialize_app(cred)
+    db = firestore.client()
     print("✅ Firebase Admin SDK initialized successfully.")
 except Exception as e:
     print(f"🔥 Error initializing Firebase Admin SDK: {e}")
@@ -61,7 +62,6 @@ def start_or_get_chat(user_id, chat_id=None):
     Starts a new chat in Firestore if no chat_id is provided,
     otherwise returns the provided chat_id.
     """
-    db = firestore.client()
     user_chats_ref = db.collection('users').document(user_id).collection('chats')
     
     if chat_id:
@@ -80,7 +80,6 @@ def add_message_to_chat(user_id, chat_id, role, content):
     """
     Adds a message to a specific chat's 'messages' array in Firestore.
     """
-    db = firestore.client()
     chat_ref = db.collection('users').document(user_id).collection('chats').document(chat_id)
     
     message = {
@@ -93,6 +92,16 @@ def add_message_to_chat(user_id, chat_id, role, content):
     chat_ref.update({
         'messages': firestore.ArrayUnion([message])
     })
+
+def get_user_chats(user_id):
+    """
+    Fetches all chat IDs and their basic information for a given user.
+    """
+    user_chats_ref = db.collection('users').document(user_id).collection('chats')
+    chats = {}
+    for chat_doc in user_chats_ref.stream():
+        chats[chat_doc.id] = chat_doc.to_dict()
+    return chats
 
 # Google OAuth settings
 SCOPES = [
@@ -354,6 +363,45 @@ def genwithtools():
 
     except Exception as e:
         print(f"Error in /api/toolcall: {e}") # Log the error for debugging
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/get_user_chats', methods=['GET'])
+def get_user_chats_route():
+    user_id = request.args.get('user_id')
+    if not user_id:
+        return jsonify({"error": "User ID is required"}), 400
+    
+    chats = get_user_chats(user_id)
+    return jsonify(chats), 200
+
+@app.route('/get_all_user_chats', methods=['GET'])
+def get_all_user_chats_route():
+    user_id = request.args.get('user_id')
+    if not user_id:
+        return jsonify({"error": "User ID is required"}), 400
+
+    try:
+        chats_data = {}
+        chats = get_user_chats(user_id)
+        for chat_id, chat_info in chats.items():
+            messages_ref = db.collection('users').document(user_id).collection('chats').document(chat_id).collection('messages')
+            messages_docs = messages_ref.order_by('timestamp').get()
+            
+            messages = []
+            for msg_doc in messages_docs:
+                messages.append(msg_doc.to_dict())
+            
+            chats_data[chat_id] = messages
+        
+        print(f"All chats for user {user_id}:")
+        for chat_id, messages in chats_data.items():
+            print(f"  Chat ID: {chat_id}")
+            for msg in messages:
+                print(f"    - {msg.get('sender')}: {msg.get('text')}")
+        
+        return jsonify(chats_data), 200
+    except Exception as e:
+        print(f"Error fetching all user chats for user {user_id}: {e}")
         return jsonify({"error": str(e)}), 500
 
 
