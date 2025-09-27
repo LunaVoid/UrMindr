@@ -7,6 +7,8 @@ import Landing from "./pages/Landing";
 import Home from "./pages/Home";
 import Chat from "./pages/Chat";
 import Calendar from "./pages/Calendar";
+import React from "react";
+import MyCalendar from "./components/MyCalendar";
 
 function App() {
   const [user, setUser] = useState(null);
@@ -42,7 +44,7 @@ function App() {
       <Routes>
         <Route path="/" element={user ? <Home user={user} accessToken={accessToken} /> : <Landing setAccessToken={setAccessToken} />} />
         <Route path="/chat" element={<Chat />} />
-        <Route path="/calendar" element={<Calendar />} />
+        <Route path="/calendar" element={<Calendar accessToken={accessToken}/>} />
       </Routes>
     </Router>
   );

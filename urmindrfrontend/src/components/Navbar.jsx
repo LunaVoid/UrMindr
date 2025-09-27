@@ -25,8 +25,11 @@ function Navbar({ setAccessToken, user }) {
       // Clear the access token from session storage on sign out
       sessionStorage.removeItem("accessToken");
       setAccessToken(null);
+      const navigate = useNavigate();
+
+      navigate('/');
     } catch (error) {
-      console.error('Error signing out:', error);
+      console.error('Error signing out:', error)
     }
   };
 

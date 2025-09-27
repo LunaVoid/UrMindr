@@ -95,6 +95,7 @@ function Home({ user, accessToken }) {
           },
         }
       );
+      print (accessToken)
       const data = await eventsResponse.json();
       setEvents(data.items);
 
