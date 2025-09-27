@@ -29,7 +29,7 @@ recognition.onresult = async function(event) {
     let ptag = document.getElementsByClassName('here');
     ptag.innerHtml=transcript;
     console.log(transcript)
-    const url = "http://127.0.0.1:5000/api/generate"
+    const url = "http://127.0.0.1:5000/api/toolcall"
 
     try {
         const response = await fetch(url,{
