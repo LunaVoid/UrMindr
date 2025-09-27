@@ -1,0 +1,15 @@
+meta {
+  name: Call Potential Tool
+  type: http
+  seq: 2
+}
+
+post {
+  url: http://127.0.0.1:5000/api/toolcall
+  body: json
+  auth: inherit
+}
+
+body:json {
+  {"prompt":"schedule a meeting with anna at 2pm tomorrow about our hackathon project. Today is Sat Sep 27th 2025"}
+}

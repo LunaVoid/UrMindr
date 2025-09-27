@@ -5,7 +5,8 @@ import { useState, useEffect } from "react";
 
 function Chat() {
 
-    let [started, setStarted] = useState(false);
+    const [started, setStarted] = useState(false);
+    const [result, setResult] = useState(false);
 
     const recognition = new webkitSpeechRecognition();
 
@@ -41,6 +42,8 @@ function Chat() {
 
         const result = await response.json();
         console.log(result);
+        setResult(result.response)
+
     } catch (error) {
         console.error(error.message);
     }
@@ -50,11 +53,11 @@ function Chat() {
         console.log("running")
         if(!started){
             recognition.start();
-            setStarted = true; 
+            setStarted(true); 
         }
         else{
             recognition.stop();
-            setStarted = false;
+            setStarted(false);
         }
 
     }
@@ -65,8 +68,9 @@ function Chat() {
     }
 
   return (
-    <div>Chat
+    <div>
         <button onClick={toggleStart}>Click for speech recognition</button>
+        <p>{result}</p>
     </div>
   )
 }

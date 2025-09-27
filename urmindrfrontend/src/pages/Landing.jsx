@@ -10,7 +10,7 @@ function Landing() {
       const user = XPathResult.user;
       const idToken = await user.getIdToken();
 
-      const response = await fetch("http://localhost:5000/auth-url", {
+      const response = await fetch("http://localhost:5000/api/cal/auth-url", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ idToken }),
@@ -21,7 +21,8 @@ function Landing() {
         console.error("Error fetching auth URL:", data.error);
         return;
       }
-    } catch (error) {
+    } 
+    catch (error) {
       console.error("Error signing in:", error);
     }
   };
