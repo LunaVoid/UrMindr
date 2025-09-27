@@ -7,13 +7,16 @@ import datetime
 from flask_cors import CORS
 from google import genai
 from google.genai import types
+from googleapiclient.discovery import build
+from google.oauth2.credentials import Credentials
+import requests
 
 import firebase_admin
 from firebase_admin import credentials, auth, firestore
 
 # --- Firebase Admin SDK Initialization ---
 try:
-    cred = credentials.ApplicationDefault()
+    cred = credentials.Certificate("hackgt2025-firebase-adminsdk-fbsvc-1c9237b900.json")
     firebase_admin.initialize_app(cred)
     db = firestore.client()
     print("✅ Firebase Admin SDK initialized successfully.")
@@ -107,7 +110,7 @@ def create_event_direct(access_token, name, start_time, end_time):
         "Authorization": f"Bearer {access_token}",
         "Content-Type": "application/json"
     }
-    event_data = {
+    
 def get_user_chats(user_id):
     """
     Fetches all chat IDs and their basic information for a given user.
@@ -292,7 +295,7 @@ def handle_schedule_meeting(args):
 def execute_function_call(function_call):
     """Executes the appropriate function based on the model's call and returns a dictionary."""
     if function_call.name == 'schedule_meeting':
-        return handle_schedule_meeting(function_call.args, access_token)
+        return handle_schedule_meeting(function_call.args)
     else:
         return jsonify({"error": f"Unknown function call: {function_call.name}"}), 400
 
@@ -302,11 +305,11 @@ def handle_gemini_response(response):
         function_call = response.candidates[0].content.parts[0].function_call
         print(f"Function to call: {function_call.name}")
         print(f"Arguments: {function_call.args}")
-        return execute_function_call(function_call, access_token)
+        return execute_function_call(function_call)
     else:
         print("No function call found in the response.")
         print(response.text)
-        return jsonify({"response": str(response.text) + " Quack."}), 200
+        return {"response": str(response.text) + " Quack."}
 
 @app.route("/api/generate", methods=["POST"])
 def generate():
@@ -367,7 +370,7 @@ def genwithtools():
 
         response = client.models.generate_content(
             model="gemini-2.5-flash",
-            contents=[system_instructions, prompt],
+            contents=contents,
             config=config,
         )
 
