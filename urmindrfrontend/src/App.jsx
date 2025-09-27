@@ -29,11 +29,11 @@ function App() {
 
   return (
     <Router>
-      <Navbar user={user} setAccessToken={setAccessToken}/>
+      <Navbar user={user}/>
       <Routes>
         <Route path="/" element={user ? <Home user={user} /> : <Landing />} />
         <Route path="/chat" element={<Chat />} />
-        <Route path="/calendar" element={<Calendar token={accessToken} />} />
+        <Route path="/calendar" element={<Calendar />} />
       </Routes>
     </Router>
   );

@@ -27,17 +27,6 @@ function Landing() {
     }
   };
 
-  const client = google.accounts.oauth2.initCodeClient({
-  client_id: 'YOUR_CLIENT_ID',
-  scope: 'https://www.googleapis.com/auth/calendar.readonly',
-  access_type: 'offline',
-  ux_mode: 'popup',
-  callback: async (response) => {
-      // Send response.code to your backend
-    }
-  });
-client.requestCode();
-
   return (
     <div className="flex flex-col items-center justify-center min-h-screen bg-gray-100">
       <div className="text-center">

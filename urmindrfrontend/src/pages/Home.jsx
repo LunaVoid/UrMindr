@@ -7,13 +7,13 @@ function Home({ user }) {
     useEffect(() => {
       const fetchEvents = async () => {
       try {
-        const response = await fetch("http://localhost:5000/events", {
+        const response = await fetch("http://localhost:5000/api/cal/events", {
           credentials: "include", // <-- important to include cookies/session
         });
 
         if (!response.ok) {
           if (response.status === 401) {
-            window.location.href = "http://localhost:5000/authorize"; // redirect to OAuth
+            window.location.href = "http://localhost:5000/api/cal/authorize"; // redirect to OAuth
             return;
           }
           throw new Error(`HTTP error! status: ${response.status}`);

@@ -11,10 +11,6 @@ function Navbar({ setAccessToken, user }) {
   const handleSignIn = async () => {
     try {
       await signInWithPopup(auth, provider);
-      const credential = GoogleAuthProvider.credentialFromResult(result);
-      const token = credential.accessToken;
-
-      setAccessToken(token);
 
     } catch (error) {
       console.error('Error signing in:', error);
