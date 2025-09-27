@@ -6,7 +6,6 @@ import os
 import datetime
 from flask_cors import CORS
 from google import genai
-from dotenv import load_dotenv
 from google.genai import types
 from google_auth_oauthlib.flow import Flow
 from googleapiclient.discovery import build
@@ -33,14 +32,7 @@ app.secret_key = os.urandom(24)
 CORS(app, supports_credentials=True)
 client = genai.Client()
 
-# --- Firebase Admin SDK Initialization ---
-try:
-    cred = credentials.ApplicationDefault()
-    firebase_admin.initialize_app(cred)
-    print("✅ Firebase Admin SDK initialized successfully.")
-except Exception as e:
-    print(f"🔥 Error initializing Firebase Admin SDK: {e}")
-# -----------------------------------------
+
 
 # Middleware to verify Firebase ID token
 @app.before_request
@@ -61,6 +53,46 @@ def get_user_context(uid):
     # TODO: Fetch user-specific context from Firestore
     # For example, you could fetch the last 10 messages from a user's chat history.
     return f"This is the context for user {uid}."
+
+# --- Chat History Functions ---
+
+def start_or_get_chat(user_id, chat_id=None):
+    """
+    Starts a new chat in Firestore if no chat_id is provided,
+    otherwise returns the provided chat_id.
+    """
+    db = firestore.client()
+    user_chats_ref = db.collection('users').document(user_id).collection('chats')
+    
+    if chat_id:
+        # TODO: Optionally, verify the chat_id exists before returning.
+        return chat_id
+    else:
+        # Create a new chat document
+        new_chat_ref = user_chats_ref.document()
+        new_chat_ref.set({
+            'startTime': datetime.datetime.now(datetime.timezone.utc),
+            'messages': []
+        })
+        return new_chat_ref.id
+
+def add_message_to_chat(user_id, chat_id, role, content):
+    """
+    Adds a message to a specific chat's 'messages' array in Firestore.
+    """
+    db = firestore.client()
+    chat_ref = db.collection('users').document(user_id).collection('chats').document(chat_id)
+    
+    message = {
+        'role': role,
+        'content': content,
+        'timestamp': datetime.datetime.now(datetime.timezone.utc)
+    }
+    
+    # Atomically add the new message to the 'messages' array
+    chat_ref.update({
+        'messages': firestore.ArrayUnion([message])
+    })
 
 # Google OAuth settings
 SCOPES = [
@@ -154,66 +186,8 @@ def create_event(creds, name, start_time, end_time):
 
 # Routes
 
-# Calendar
 @app.route("/api/cal/events")
-def index():
-    creds = get_credentials()
-    if creds:
-        events = fetch_events(creds) # GETS EVENTS-----------------------------
-        html = display_events(events)
-        return render_template_string(html)
-    else:
-        return '<a href="/authorize">Authorize Google Calendar</a>'
-
-
-@app.route("/api/cal/authorize")
-def authorize():
-    session.clear()
-    return redirect(authorize_flow())
-
-
-@app.route("/api/cal/oauth2callback")
-def oauth2callback():
-    handle_oauth2_callback()
-    return redirect(url_for("index"))
-
-
-@app.route("/api/cal/logout")
-def logout():
-    session.pop("credentials", None)
-    return redirect(url_for("index"))
-
-
-# Optional: Route to create an event (example)
-@app.route("/api/cal/create-event")
-def create_event_route():
-    creds = get_credentials()
-    if not creds:
-        return redirect(url_for("authorize"))
-    
-    # Example: create a dummy event 1 hour from now
-    now = datetime.datetime.now(datetime.timezone.utc)
-    start_time = now + datetime.timedelta(hours=1)
-    end_time = start_time + datetime.timedelta(hours=1)
-    create_event(creds, "Test Event", start_time, end_time)
-    print ("event created")
-    return redirect(url_for("index"))
-
-
-@app.route("/api/cal/auth-url", methods=["POST"])
-def auth_url():
-    id_token = request.json.get("idToken")
-    if id_token:
-        try:
-            decoded = firebase_auth.verify_id_token(id_token)
-            session["firebase_uid"] = decoded["uid"]
-        except Exception as e:
-            return jsonify({"error": "invalid id token"}), 401
-    authorization_url = authorize_flow() 
-    return jsonify({"authorization_url": authorization_url})
-
-@app.route("/api/cal/events")
-def events_route():
+def events():
     creds = get_credentials()
     if not creds:
         return jsonify({"error": "Not authorized"}), 401
@@ -253,15 +227,15 @@ schedule_meeting_function = {
 }
 
 def handle_schedule_meeting(args):
-    """Handles the logic for the 'schedule_meeting' tool."""
+    """Handles the logic for the 'schedule_meeting' tool and returns a dictionary."""
     creds = get_credentials()
     if not creds:
         # If no credentials, we need to initiate the OAuth flow
         auth_url = authorize_flow()
-        return jsonify({
+        return {
             "response": "I need to authorize with your Google Calendar first.",
             "authorization_url": auth_url
-        }), 200
+        }
 
     try:
         # The model might not provide all arguments, so we use .get()
@@ -270,27 +244,27 @@ def handle_schedule_meeting(args):
         time = args.get('time')
         
         if not date or not time:
-            return jsonify({"response": "I need a date and time to schedule the meeting. Quack."}), 200
+            return {"response": "I need a date and time to schedule the meeting. Quack."}
 
         start_datetime_str = f"{date}T{time}"
         start_datetime = datetime.datetime.fromisoformat(start_datetime_str)
         end_datetime = start_datetime + datetime.timedelta(hours=1) # Assume 1-hour meetings
 
         event = create_event(creds, topic, start_datetime, end_datetime)
-        return jsonify({"response": f"I've scheduled a meeting about '{topic}'. Quack.", "event": event}), 200
+        return {"response": f"I've scheduled a meeting about '{topic}'. Quack.", "event": event}
 
     except Exception as e:
-        return jsonify({"error": f"Error creating event: {str(e)}"}), 500
+        return {"error": f"Error creating event: {str(e)}"}
 
 def execute_function_call(function_call):
-    """Executes the appropriate function based on the model's call."""
+    """Executes the appropriate function based on the model's call and returns a dictionary."""
     if function_call.name == 'schedule_meeting':
         return handle_schedule_meeting(function_call.args)
     else:
-        return jsonify({"error": f"Unknown function call: {function_call.name}"}), 400
+        return {"error": f"Unknown function call: {function_call.name}"}
 
 def handle_gemini_response(response):
-    """Processes the response from the Gemini model."""
+    """Processes the response from the Gemini model and returns a dictionary."""
     if response.candidates and response.candidates[0].content.parts[0].function_call:
         function_call = response.candidates[0].content.parts[0].function_call
         print(f"Function to call: {function_call.name}")
@@ -300,7 +274,7 @@ def handle_gemini_response(response):
         # No function call, just return the text response
         print("No function call found in the response.")
         print(response.text)
-        return jsonify({"response": str(response.text) + " Quack."}), 200
+        return {"response": str(response.text) + " Quack."}
 
 @app.route("/api/generate", methods=["POST"])
 def generate():
@@ -324,24 +298,61 @@ def genwithtools():
     if not request.json or 'prompt' not in request.json:
         return jsonify({"error": "Missing 'prompt' in request body"}), 400
 
+    user_id = g.user['uid']
     prompt = request.json['prompt']
-    user_context = get_user_context(g.user['uid'])
-    
-    system_instructions = f"""You are a duck assistant that can schedule meetings. 
-                             Always try to use the 'schedule_meeting' tool when appropriate and always end with a quack.
-                             Here is some context about the user: {user_context}"""
-
-    tools = types.Tool(function_declarations=[schedule_meeting_function])
-    config = types.GenerateContentConfig(tools=[tools])
+    chat_id = request.json.get('chat_id') # Optional chat_id from client
 
     try:
+        # Start a new chat or get the existing one
+        active_chat_id = start_or_get_chat(user_id, chat_id)
+
+        # Save user's message
+        add_message_to_chat(user_id, active_chat_id, 'user', prompt)
+
+        user_context = get_user_context(user_id)
+        
+        system_instructions = f"""You are a duck assistant that can schedule meetings. 
+                                 Always try to use the 'schedule_meeting' tool when appropriate and always end with a quack.
+                                 Here is some context about the user: {user_context}"""
+
+        tools = types.Tool(function_declarations=[schedule_meeting_function])
+        config = types.GenerateContentConfig(tools=[tools])
+
+        # Get the history of the current chat to provide context to the model
+        chat_ref = firestore.client().collection('users').document(user_id).collection('chats').document(active_chat_id)
+        chat_history_snap = chat_ref.get()
+        chat_history = chat_history_snap.to_dict().get('messages', [])
+
+        # The 'contents' argument should be a list of alternating user/model messages
+        # We add the system instructions first
+        contents = [system_instructions]
+        # Then add the existing chat history
+        for message in chat_history:
+            role = 'user' if message['role'] == 'user' else 'model'
+            contents.append({'role': role, 'parts': [{'text': message['content']}]})
+        # Finally, add the current user prompt
+        contents.append({'role': 'user', 'parts': [{'text': prompt}]})
+
+
         response = client.models.generate_content(
             model="gemini-2.5-flash",
-            contents=[system_instructions, prompt],
+            contents=contents,
             config=config,
         )
-        return handle_gemini_response(response)
+
+        # Process and save the agent's response
+        agent_response_data = handle_gemini_response(response)
+        agent_message = agent_response_data.get('response', '')
+
+        add_message_to_chat(user_id, active_chat_id, 'agent', agent_message)
+
+        # Add the chat_id to the response for the client
+        agent_response_data['chat_id'] = active_chat_id
+
+        return jsonify(agent_response_data)
+
     except Exception as e:
+        print(f"Error in /api/toolcall: {e}") # Log the error for debugging
         return jsonify({"error": str(e)}), 500
 
 

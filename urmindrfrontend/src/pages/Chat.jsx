@@ -9,6 +9,7 @@ function Chat() {
     const [messages, setMessages] = useState([]);
     const [input, setInput] = useState('');
     const [user, setUser] = useState(null);
+    const [currentChatId, setCurrentChatId] = useState(null);
 
     useEffect(() => {
         const auth = getAuth();
@@ -18,7 +19,7 @@ function Chat() {
         return () => unsubscribe();
     }, []);
 
-    const sendMessageToApi = async (message) => {
+    const sendMessageToApi = async (message, chatId = null) => {
         if (!user) {
             console.error("No user logged in.");
             setMessages(prevMessages => [...prevMessages, { text: "You must be logged in to use the chat.", sender: 'bot' }]);
@@ -27,6 +28,12 @@ function Chat() {
 
         const idToken = await user.getIdToken();
         const url = "http://127.0.0.1:5000/api/toolcall";
+        
+        const requestBody = { prompt: message };
+        if (chatId) {
+            requestBody.chat_id = chatId;
+        }
+
         try {
             const response = await fetch(url, {
                 method: "POST",
@@ -35,19 +42,21 @@ function Chat() {
                     'Content-Type': 'application/json',
                     'Authorization': `Bearer ${idToken}`
                 },
-                body: JSON.stringify({ prompt: message })
+                body: JSON.stringify(requestBody)
             });
             
             const result = await response.json();
 
             if (!response.ok) {
-                // Handle API errors (e.g., 401, 500 from backend)
                 const errorMessage = result.error || `Error: ${response.status} ${response.statusText}`;
                 setMessages(prevMessages => [...prevMessages, { text: `Error: ${errorMessage}`, sender: 'bot' }]);
                 return;
             }
 
-            // Check for authorization URL from backend
+            if (result.chat_id && result.chat_id !== currentChatId) {
+                setCurrentChatId(result.chat_id);
+            }
+
             if (result.authorization_url) {
                 const authLink = <a href={result.authorization_url} target="_blank" rel="noopener noreferrer" className="text-blue-500 underline">Click here to authorize Google Calendar</a>;
                 setMessages(prevMessages => [...prevMessages, { text: result.response, sender: 'bot' }, { text: authLink, sender: 'bot' }]);
@@ -64,7 +73,7 @@ function Chat() {
     const handleSendMessage = () => {
         if (input.trim()) {
             setMessages([...messages, { text: input, sender: 'user' }]);
-            sendMessageToApi(input);
+            sendMessageToApi(input, currentChatId);
             setInput('');
         }
     };
@@ -83,7 +92,7 @@ function Chat() {
         const transcript = event.results[0][0].transcript;
         console.log('Result received: ' + transcript);
         setMessages(prevMessages => [...prevMessages, { text: transcript, sender: 'user' }]);
-        sendMessageToApi(transcript);
+        sendMessageToApi(transcript, currentChatId);
     };
 
     function toggleStart () {
@@ -97,6 +106,11 @@ function Chat() {
             setStarted(false);
         }
 
+    }
+
+    const handleNewChat = () => {
+        setCurrentChatId(null);
+        setMessages([]);
     }
 
     // Check browser support
@@ -143,6 +157,12 @@ function Chat() {
             <button onClick={toggleStart} className="bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded">
           Click for speech recognition
         </button>
+            <button
+              className="bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded"
+              onClick={handleNewChat}
+            >
+              New Chat
+            </button>
           </div>
         </div>
       </div>
