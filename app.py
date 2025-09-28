@@ -12,7 +12,6 @@ from firebase_admin import credentials, auth, firestore
 
 # --- Firebase Admin SDK Initialization ---
 try:
-     #cred = credentials.Certificate("hackgt2025-firebase-adminsdk-fbsvc-1c9237b900.json")
     cred = credentials.ApplicationDefault()
     firebase_admin.initialize_app(cred)
     db = firestore.client()
@@ -137,7 +136,7 @@ def get_events():
 # Function Calling
 schedule_meeting_function = {
     "name": "schedule_meeting",
-    "description": "Schedules a meeting with specified attendees at a given time and date.",
+    "description": "Schedules a single meeting with specified attendees at a given time and date.",
     "parameters": {
         "type": "object",
         "properties": {
@@ -160,6 +159,43 @@ schedule_meeting_function = {
             },
         },
         "required": ["date", "time", "topic"],
+    },
+}
+
+schedule_multiple_events_function = {
+    "name": "schedule_multiple_events",
+    "description": "Schedules multiple events/tasks at once. Useful for breaking down large projects into smaller scheduled tasks.",
+    "parameters": {
+        "type": "object",
+        "properties": {
+            "events": {
+                "type": "array",
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "topic": {
+                            "type": "string",
+                            "description": "The subject or topic of the event/task.",
+                        },
+                        "date": {
+                            "type": "string",
+                            "description": "Date of the event (e.g., '2024-07-29')",
+                        },
+                        "time": {
+                            "type": "string",
+                            "description": "Time of the event (e.g., '15:00')",
+                        },
+                        "duration_hours": {
+                            "type": "number",
+                            "description": "Duration of the event in hours (default: 1)",
+                        }
+                    },
+                    "required": ["topic", "date", "time"]
+                },
+                "description": "List of events to schedule.",
+            },
+        },
+        "required": ["events"],
     },
 }
 
@@ -191,11 +227,73 @@ def handle_schedule_meeting(args, access_token):
         event = create_event_direct(access_token, topic, start_datetime, end_datetime)
         print(topic,start_datetime,end_datetime)
         if event:
-            return {"response": f"I've scheduled a meeting about '{topic}' at {date} and {time}!", "event": event}
+            return {"response": f"I've scheduled a meeting about '{topic}' for {date} at {time}.", "event": event}
         else:
             return {"error": "Failed to create calendar event"}
     except Exception as e:
         return {"error": f"Error creating event: {str(e)}"}
+
+def handle_schedule_multiple_events(args, access_token):
+    """Handles scheduling multiple events and returns a dictionary."""
+    if not access_token:
+        return {"error": "Missing access token for calendar operations"}
+    
+    events_to_schedule = args.get('events', [])
+    if not events_to_schedule:
+        return {"response": "No events provided to schedule."}
+    
+    scheduled_events = []
+    failed_events = []
+    
+    for event_data in events_to_schedule:
+        try:
+            topic = event_data.get('topic', 'Task')
+            date = event_data.get('date')
+            time = event_data.get('time')
+            duration_hours = event_data.get('duration_hours', 1)
+            
+            if not date or not time:
+                failed_events.append(f"'{topic}' - missing date or time")
+                continue
+                
+            start_datetime_str = f"{date}T{time}"
+            start_datetime = datetime.datetime.fromisoformat(start_datetime_str)
+            end_datetime = start_datetime + datetime.timedelta(hours=duration_hours)
+            
+            event = create_event_direct(access_token, topic, start_datetime, end_datetime)
+            
+            if event:
+                scheduled_events.append({
+                    "topic": topic,
+                    "date": date,
+                    "time": time,
+                    "duration": duration_hours
+                })
+                print(f"Scheduled: {topic} on {date} at {time}")
+            else:
+                failed_events.append(f"'{topic}' - API error")
+                
+        except Exception as e:
+            failed_events.append(f"'{topic}' - {str(e)}")
+    
+    # Build response message
+    response_parts = []
+    if scheduled_events:
+        response_parts.append(f"Successfully scheduled {len(scheduled_events)} events:")
+        for event in scheduled_events:
+            response_parts.append(f"• {event['topic']} on {event['date']} at {event['time']} ({event['duration']}h)")
+    
+    if failed_events:
+        response_parts.append(f"\nFailed to schedule {len(failed_events)} events:")
+        for failure in failed_events:
+            response_parts.append(f"• {failure}")
+    
+    return {
+        "response": "\n".join(response_parts),
+        "scheduled_count": len(scheduled_events),
+        "failed_count": len(failed_events),
+        "scheduled_events": scheduled_events
+    }
 
 def get_current_time():
     current_time = datetime.datetime.now()
@@ -206,8 +304,10 @@ def execute_function_call(function_call, access_token):
     """Executes the appropriate function based on the model's call and returns a dictionary."""
     if function_call.name == 'schedule_meeting':
         return handle_schedule_meeting(function_call.args, access_token)
+    elif function_call.name == 'schedule_multiple_events':
+        return handle_schedule_multiple_events(function_call.args, access_token)
     elif function_call.name == "get_time":
-        return {"response": f"The current time is {get_current_time()}. Quack."}
+        return {"response": f"The current time is {get_current_time()}."}
     else:
         return {"error": f"Unknown function call: {function_call.name}"}
 
@@ -221,7 +321,7 @@ def handle_gemini_response(response, access_token):
     else:
         print("No function call found in the response.")
         print(response.text)
-        return {"response": str(response.text) + " Quack."}
+        return {"response": str(response.text)}
 
 @app.route("/api/generate", methods=["POST"])
 def generate():
@@ -252,14 +352,52 @@ def genwithtools():
         
         # Save user's message
         add_message_to_chat(user_id, active_chat_id, 'user', prompt)
+        current_datetime = datetime.datetime.now()
+        current_date = current_datetime.strftime("%Y-%m-%d")
+        current_time = current_datetime.strftime("%H:%M:%S")
+        current_day = current_datetime.strftime("%A")  # Monday, Tuesday, etc.
         
         user_context = get_user_context(user_id)
-        system_instructions = f"""You are a duck assistant that can schedule meetings.
-                                 Always try to use the 'schedule_meeting' tool when appropriate and always end with a quack.
-                                 You should always consider the entire conversation history provided to generate your response.
-                                 Here is some context about the user: {user_context}"""
+        system_instructions = f"""You are an intelligent assistant that specializes in task planning and calendar management.
+
+CURRENT CONTEXT:
+Today's date: {current_date}
+Current time: {current_time}
+Current day: {current_day}
+
+
+CORE CAPABILITIES:
+- Break down large, complex tasks into smaller, manageable scheduled events
+- Schedule single meetings with 'schedule_meeting' 
+- Schedule multiple events at once with 'schedule_multiple_events'
+- Help users organize and plan their work effectively
+
+TASK BREAKDOWN APPROACH:
+When users give you large or complex tasks, follow these steps:
+1. ANALYZE: Break the task into logical subtasks or phases
+2. PRIORITIZE: Suggest a logical order and timeline
+3. SCHEDULE: Use 'schedule_multiple_events' to create calendar entries for each subtask
+4. EXPLAIN: Tell the user your reasoning and how the breakdown helps them
+
+EXAMPLES OF GOOD BREAKDOWNS:
+- "Plan wedding" → Research venues, book venue, plan menu, send invitations, etc.
+- "Launch product" → Market research, design, development, testing, marketing, launch
+- "Write thesis" → Research, outline, write chapters, review, editing, final submission
+- "Learn programming" → Set up environment, learn basics, practice projects, build portfolio
+
+SCHEDULING GUIDELINES:
+- Suggest realistic time blocks (0.5-4 hours typically)
+- Space tasks appropriately (don't overschedule)
+- Consider dependencies (some tasks must finish before others start)
+- Ask for clarification if timeline is unclear
+
+Always try to use 'schedule_multiple_events' when breaking down complex tasks.
+Consider the entire conversation history when generating responses.
+Be helpful, friendly, and occasionally add a playful "quack" if it feels natural.
+
+User context: {user_context}"""
         
-        tools = types.Tool(function_declarations=[schedule_meeting_function, get_time_function])
+        tools = types.Tool(function_declarations=[schedule_meeting_function, schedule_multiple_events_function, get_time_function])
         config = types.GenerateContentConfig(tools=[tools])
         
         # Get the history of the current chat to provide context to the model
