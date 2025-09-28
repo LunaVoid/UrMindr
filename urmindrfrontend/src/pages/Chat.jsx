@@ -4,6 +4,16 @@ import { getAuth, onAuthStateChanged } from "firebase/auth";
 
 import microphoneIcon from "../assets/microphone icon.png";
 
+function formatChatIdForDisplay(isoDateString) {
+  const date = new Date(isoDateString);
+  const month = (date.getMonth() + 1).toString().padStart(2, "0");
+  const day = date.getDate().toString().padStart(2, "0");
+  const year = date.getFullYear().toString().slice(-2);
+  const hours = date.getHours().toString().padStart(2, "0");
+  const minutes = date.getMinutes().toString().padStart(2, "0");
+  return `${month}/${day}/${year} ${hours}:${minutes}`;
+}
+
 function Chat() {
   const [started, setStarted] = useState(false);
   const [messages, setMessages] = useState([]);
@@ -35,6 +45,7 @@ function Chat() {
         sender: msg.role === "user" ? "user" : "bot",
       }))
     );
+    fetchAndDisplayOldChats(); // Refetch chat history after loading a chat
   };
 
   const sendMessageToApi = async (message, chatId = null) => {
@@ -56,6 +67,7 @@ function Chat() {
     }
 
     try {
+      const accessToken = sessionStorage.getItem("accessToken");
       const response = await fetch(url, {
         method: "POST",
         headers: {
@@ -181,7 +193,6 @@ function Chat() {
       }
 
       const chatsData = await response.json();
-      console.log("Old chats fetched successfully:", chatsData);
       setHistoricalChats(chatsData);
     } catch (error) {
       console.error("Network error fetching old chats:", error);
@@ -202,17 +213,19 @@ function Chat() {
         <h2 className="text-lg font-bold mb-4">Historical Chats</h2>
         {Object.entries(historicalChats).length > 0 ? (
           <ul>
-            {Object.entries(historicalChats).map(([chatId, messages]) => (
-              <li
-                key={chatId}
-                className={`cursor-pointer p-2 mb-2 rounded-lg ${
-                  currentChatId === chatId ? "bg-blue-200" : "hover:bg-gray-200"
-                }`}
-                onClick={() => loadChat(chatId, messages)}
-              >
-                Chat ID: {chatId}
-              </li>
-            ))}
+            {Object.entries(historicalChats)
+              .sort(([chatIdA], [chatIdB]) => chatIdB.localeCompare(chatIdA))
+              .map(([chatId, messages]) => (
+                <li
+                  key={chatId}
+                  className={`cursor-pointer p-2 mb-2 rounded-lg ${
+                    currentChatId === chatId ? "bg-blue-200" : "hover:bg-gray-200"
+                  }`}
+                  onClick={() => loadChat(chatId, messages)}
+                >
+                  {formatChatIdForDisplay(chatId)}
+                </li>
+              ))}
           </ul>
         ) : (
           <p>No historical chats found.</p>
