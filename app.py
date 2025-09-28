@@ -184,14 +184,14 @@ def handle_schedule_meeting(args, access_token):
         date = args.get('date')
         time = args.get('time')
         if not date or not time:
-            return {"response": "I need a date and time to schedule the meeting. Quack."}
+            return {"response": "I need a date and time to schedule the meeting."}
         start_datetime_str = f"{date}T{time}"
         start_datetime = datetime.datetime.fromisoformat(start_datetime_str)
         end_datetime = start_datetime + datetime.timedelta(hours=1)
         event = create_event_direct(access_token, topic, start_datetime, end_datetime)
         print(topic,start_datetime,end_datetime)
         if event:
-            return {"response": f"I've scheduled a meeting about '{topic}'. Quack.", "event": event}
+            return {"response": f"I've scheduled a meeting about '{topic}' at {date} and {time}!", "event": event}
         else:
             return {"error": "Failed to create calendar event"}
     except Exception as e:
