@@ -316,6 +316,7 @@ function Home({ user, accessToken }) {
                 />
                 {new Date(event.start.dateTime || event.start.date).toLocaleString()} - {event.summary}
               </li>
+              
             );
           })}
         </ul>
