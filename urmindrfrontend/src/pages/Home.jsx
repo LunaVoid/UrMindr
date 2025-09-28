@@ -1,5 +1,7 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
+import React from 'react';
+import '../progressBar.css';
 
 function Home({ user, accessToken }) {
   const [events, setEvents] = useState([]);
@@ -8,6 +10,29 @@ function Home({ user, accessToken }) {
   const [startTime, setStartTime] = useState("");
   const [endTime, setEndTime] = useState("");
 
+
+ const calculateProgress = (completedTasks, totalTasks) => {
+  if (totalTasks === 0) return 0;
+  return Math.round((completedTasks / totalTasks) * 100);
+};
+
+const ProgressBar = ({ completedTasks, totalTasks }) => {
+  const percentCompleted = calculateProgress(completedTasks = 0, totalTasks = 0);
+
+  return (
+    <div className="flex flex-col items-center w-full max-w-xl">
+      <progress
+        className="progressBar w-full h-5"
+        value={percentCompleted}
+        max={100}
+      />
+      <p className="mt-2">
+        Tasks {percentCompleted}% complete
+      </p>
+    </div>
+  );
+};
+  
   useEffect(() => {
     const fetchEvents = async () => {
       if (!accessToken) {
@@ -126,8 +151,10 @@ function Home({ user, accessToken }) {
     }
   };
 
+
   return (
     <div className="flex flex-col items-center justify-center min-h-screen bg-gray-100 p-4">
+      <ProgressBar currentValue={70} maxValue={100} />
       <div className="text-center w-full max-w-2xl">
         <h1 className="text-4xl font-bold mb-4">Account Information</h1>
         <p className="text-lg">Welcome, {user.displayName}!</p>
