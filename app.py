@@ -133,85 +133,9 @@ def get_events():
     events = fetch_events_direct(access_token)
     return jsonify({"events": events})
 
-# Function Calling
-schedule_meeting_function = {
-    "name": "schedule_meeting",
-    "description": "Schedules a single meeting with specified attendees at a given time and date.",
-    "parameters": {
-        "type": "object",
-        "properties": {
-            "attendees": {
-                "type": "array",
-                "items": {"type": "string"},
-                "description": "List of people attending the meeting.",
-            },
-            "date": {
-                "type": "string",
-                "description": "Date of the meeting (e.g., '2024-07-29')",
-            },
-            "time": {
-                "type": "string",
-                "description": "Time of the meeting (e.g., '15:00')",
-            },
-            "topic": {
-                "type": "string",
-                "description": "The subject or topic of the meeting.",
-            },
-        },
-        "required": ["date", "time", "topic"],
-    },
-}
-
-schedule_multiple_events_function = {
-    "name": "schedule_multiple_events",
-    "description": "Schedules multiple events/tasks at once. Useful for breaking down large projects into smaller scheduled tasks.",
-    "parameters": {
-        "type": "object",
-        "properties": {
-            "events": {
-                "type": "array",
-                "items": {
-                    "type": "object",
-                    "properties": {
-                        "topic": {
-                            "type": "string",
-                            "description": "The subject or topic of the event/task.",
-                        },
-                        "date": {
-                            "type": "string",
-                            "description": "Date of the event (e.g., '2024-07-29')",
-                        },
-                        "time": {
-                            "type": "string",
-                            "description": "Time of the event (e.g., '15:00')",
-                        },
-                        "duration_hours": {
-                            "type": "number",
-                            "description": "Duration of the event in hours (default: 1)",
-                        }
-                    },
-                    "required": ["topic", "date", "time"]
-                },
-                "description": "List of events to schedule.",
-            },
-        },
-        "required": ["events"],
-    },
-}
-
-get_time_function = {
-    "name": "get_time",
-    "description": "Gets the current user's time",
-    "parameters": {
-        "type": "object",
-        "properties": {
-        },
-        "required": [],
-    },
-}
-
 def handle_schedule_meeting(args, access_token):
     """Handles the logic for the 'schedule_meeting' tool and returns a dictionary."""
+    print(f"Access token received: {access_token[:20]}..." if access_token else "No access token")
     if not access_token:
         return {"error": "Missing access token for calendar operations"}
     try:
@@ -221,6 +145,13 @@ def handle_schedule_meeting(args, access_token):
         time = args.get('time')
         if not date or not time:
             return {"response": "I need a date and time to schedule the meeting."}
+        
+        # Validate date is not in the past
+        today = datetime.datetime.now().date()
+        event_date = datetime.datetime.fromisoformat(date).date()
+        if event_date < today:
+            return {"error": f"Cannot schedule meeting on {date} - date is in the past"}
+            
         start_datetime_str = f"{date}T{time}"
         start_datetime = datetime.datetime.fromisoformat(start_datetime_str)
         end_datetime = start_datetime + datetime.timedelta(hours=1)
@@ -244,6 +175,7 @@ def handle_schedule_multiple_events(args, access_token):
     
     scheduled_events = []
     failed_events = []
+    today = datetime.datetime.now().date()
     
     for event_data in events_to_schedule:
         try:
@@ -254,6 +186,12 @@ def handle_schedule_multiple_events(args, access_token):
             
             if not date or not time:
                 failed_events.append(f"'{topic}' - missing date or time")
+                continue
+                
+            # Validate date is not in the past
+            event_date = datetime.datetime.fromisoformat(date).date()
+            if event_date < today:
+                failed_events.append(f"'{topic}' - date {date} is in the past")
                 continue
                 
             start_datetime_str = f"{date}T{time}"
@@ -313,15 +251,37 @@ def execute_function_call(function_call, access_token):
 
 def handle_gemini_response(response, access_token):
     """Processes the response from the Gemini model and returns a dictionary."""
-    if response.candidates and response.candidates[0].content.parts[0].function_call:
-        function_call = response.candidates[0].content.parts[0].function_call
-        print(f"Function to call: {function_call.name}")
-        print(f"Arguments: {function_call.args}")
+    if not response.candidates:
+        return {"response": "No response from the model."}
+    
+    candidate = response.candidates[0]
+    if not candidate.content or not candidate.content.parts:
+        return {"response": "Empty response from the model."}
+    
+    # Look for function calls in all parts
+    function_call = None
+    text_parts = []
+    
+    for part in candidate.content.parts:
+        if hasattr(part, 'function_call') and part.function_call:
+            function_call = part.function_call
+            print(f"Found function call: {function_call.name}")
+            print(f"Arguments: {function_call.args}")
+        elif hasattr(part, 'text') and part.text:
+            text_parts.append(part.text)
+    
+    # If we found a function call, execute it
+    if function_call:
         return execute_function_call(function_call, access_token)
-    else:
+    
+    # Otherwise, return the text response
+    full_text = ''.join(text_parts)
+    if full_text:
         print("No function call found in the response.")
-        print(response.text)
-        return {"response": str(response.text)}
+        print(f"Text response: {full_text}")
+        return {"response": full_text}
+    else:
+        return {"response": "No usable response from the model."}
 
 @app.route("/api/generate", methods=["POST"])
 def generate():
@@ -349,26 +309,111 @@ def genwithtools():
     try:
         # Start a new chat or get the existing one
         active_chat_id = start_or_get_chat(user_id, chat_id)
-        
         # Save user's message
         add_message_to_chat(user_id, active_chat_id, 'user', prompt)
+        
         current_datetime = datetime.datetime.now()
         current_date = current_datetime.strftime("%Y-%m-%d")
         current_time = current_datetime.strftime("%H:%M:%S")
         current_day = current_datetime.strftime("%A")  # Monday, Tuesday, etc.
+        tomorrow_date = (current_datetime + datetime.timedelta(days=1)).strftime('%Y-%m-%d')
         
         user_context = get_user_context(user_id)
+        
+        # Function Calling with dynamic date context
+        schedule_meeting_function = {
+            "name": "schedule_meeting",
+            "description": "Schedules a single meeting with specified attendees at a given time and date.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "attendees": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                        "description": "List of people attending the meeting.",
+                    },
+                    "date": {
+                        "type": "string",
+                        "description": f"Date of the meeting in YYYY-MM-DD format. Today is {current_date}. Use dates >= {current_date}",
+                    },
+                    "time": {
+                        "type": "string",
+                        "description": "Time of the meeting in HH:MM format (e.g., '15:00')",
+                    },
+                    "topic": {
+                        "type": "string",
+                        "description": "The subject or topic of the meeting.",
+                    },
+                },
+                "required": ["date", "time", "topic"],
+            },
+        }
+
+        schedule_multiple_events_function = {
+            "name": "schedule_multiple_events",
+            "description": "Schedules multiple events/tasks at once. Useful for breaking down large projects into smaller scheduled tasks.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "events": {
+                        "type": "array",
+                        "items": {
+                            "type": "object",
+                            "properties": {
+                                "topic": {
+                                    "type": "string",
+                                    "description": "The subject or topic of the event/task.",
+                                },
+                                "date": {
+                                    "type": "string",
+                                    "description": f"Date of the event in YYYY-MM-DD format. Today is {current_date}. Use dates >= {current_date}",
+                                },
+                                "time": {
+                                    "type": "string",
+                                    "description": "Time of the event in HH:MM format (e.g., '15:00')",
+                                },
+                                "duration_hours": {
+                                    "type": "number",
+                                    "description": "Duration of the event in hours (default: 1)",
+                                }
+                            },
+                            "required": ["topic", "date", "time"]
+                        },
+                        "description": "List of events to schedule.",
+                    },
+                },
+                "required": ["events"],
+            },
+        }
+
+        get_time_function = {
+            "name": "get_time",
+            "description": "Gets the current user's time",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                },
+                "required": [],
+            },
+        }
+        
         system_instructions = f"""You are an intelligent assistant that specializes in task planning and calendar management.
 
-CURRENT CONTEXT:
-Today's date: {current_date}
-Current time: {current_time}
-Current day: {current_day}
+⚠️ CRITICAL DATE INFORMATION - READ CAREFULLY ⚠️
+TODAY IS: {current_day}, {current_date} ({current_time})
+CURRENT YEAR: {current_datetime.year}
+CURRENT MONTH: {current_datetime.strftime('%B')} ({current_datetime.month})
 
+NEVER assume or guess dates - always use the current date provided above as your reference point.
+
+When users say relative dates, calculate from TODAY ({current_date}):
+- "tomorrow" = {tomorrow_date}
+- "next Tuesday" = calculate from today ({current_day})
+- "this weekend" = calculate from today ({current_date})
 
 CORE CAPABILITIES:
 - Break down large, complex tasks into smaller, manageable scheduled events
-- Schedule single meetings with 'schedule_meeting' 
+- Schedule single meetings with 'schedule_meeting'
 - Schedule multiple events at once with 'schedule_multiple_events'
 - Help users organize and plan their work effectively
 
@@ -379,24 +424,20 @@ When users give you large or complex tasks, follow these steps:
 3. SCHEDULE: Use 'schedule_multiple_events' to create calendar entries for each subtask
 4. EXPLAIN: Tell the user your reasoning and how the breakdown helps them
 
-EXAMPLES OF GOOD BREAKDOWNS:
-- "Plan wedding" → Research venues, book venue, plan menu, send invitations, etc.
-- "Launch product" → Market research, design, development, testing, marketing, launch
-- "Write thesis" → Research, outline, write chapters, review, editing, final submission
-- "Learn programming" → Set up environment, learn basics, practice projects, build portfolio
-
 SCHEDULING GUIDELINES:
-- Suggest realistic time blocks (0.5-4 hours typically)
+- Suggest realistic time blocks (0.5-4 hours typically)  
 - Space tasks appropriately (don't overschedule)
 - Consider dependencies (some tasks must finish before others start)
 - Ask for clarification if timeline is unclear
+- ALWAYS use YYYY-MM-DD format for dates
+- ALWAYS calculate dates from TODAY: {current_date}
 
 Always try to use 'schedule_multiple_events' when breaking down complex tasks.
 Consider the entire conversation history when generating responses.
 Be helpful, friendly, and occasionally add a playful "quack" if it feels natural.
 
 User context: {user_context}"""
-        
+
         tools = types.Tool(function_declarations=[schedule_meeting_function, schedule_multiple_events_function, get_time_function])
         config = types.GenerateContentConfig(tools=[tools])
         
@@ -457,5 +498,5 @@ def get_all_user_chats_route():
         print(f"Error fetching all user chats for user {user_id}: {e}")
         return jsonify({"error": str(e)}), 500
 
-if __name__ == "__main__":
+if __name__ == "__main__":  
     app.run("localhost", 5000, debug=True, use_reloader=False)
