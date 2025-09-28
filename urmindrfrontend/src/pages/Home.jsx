@@ -1,9 +1,22 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { getAuth, onAuthStateChanged } from "firebase/auth";
-import { getFirestore, collection, query, orderBy, limit, where, getDocs, doc, getDoc, updateDoc, setDoc, serverTimestamp } from "firebase/firestore";
-import React from 'react';
-import '../progressBar.css';
+import {
+  getFirestore,
+  collection,
+  query,
+  orderBy,
+  limit,
+  where,
+  getDocs,
+  doc,
+  getDoc,
+  updateDoc,
+  setDoc,
+  serverTimestamp,
+} from "firebase/firestore";
+import React from "react";
+import "../progressBar.css";
 
 function Home({ user, accessToken }) {
   const [events, setEvents] = useState([]);
@@ -11,115 +24,147 @@ function Home({ user, accessToken }) {
   const [summary, setSummary] = useState("");
   const [startTime, setStartTime] = useState("");
   const [endTime, setEndTime] = useState("");
+  const [selectedEvents, setSelectedEvents] = useState([]); // New state for selected events
+
+ const handleCheckboxChange = (eventId) => {
+  // Mark the event as "removing" to trigger animation
+  setEvents((prevEvents) =>
+    prevEvents.map((event) =>
+      event.id === eventId ? { ...event, isRemoving: true } : event
+    )
+  );
+
+  setTimeout(() => {
+    setEvents((prevEvents) =>
+      prevEvents.filter((event) => event.id !== eventId)
+    );
+  }, 300); 
+};
+
+  const handleCompleteEvents = () => {
+    const completedEventNames = events
+      .filter((event) => selectedEvents.includes(event.id))
+      .map((event) => event.summary);
+    console.log("Completed Events:", completedEventNames);
+    // Here you would typically send these completed events to your backend
+    // and then clear the selectedEvents state.
+    setSelectedEvents([]); // Clear selection after logging
+  };
   const [percentCompleted, setpercentCompleted] = useState(0);
 
   //console.log(user)
   console.log("Auth user ID:", user.uid);
   console.log("Document ID should match this");
-  useEffect(()=>{
-
+  useEffect(() => {
     console.log("Auth user ID:", user.uid);
     console.log("Document ID should match this");
     const updateLoginStreak = async (userId) => {
-    const db = getFirestore();
-    const userDocRef = doc(db, 'users', userId);
-    
-    try {
-      const userDoc = await getDoc(userDocRef);
-      
-      if (userDoc.exists()) {
-        const userData = userDoc.data();
-        
-        // Check if loginStreak field exists
-        if (!userData.loginStreak) {
-          // First time - create the field
-          await updateDoc(userDocRef, {
-            'loginStreak.currentStreak': 1,
-            'loginStreak.longestStreak': 1,
-            'loginStreak.lastLoginDate': serverTimestamp()
-          });
-          console.log("Created login streak for new user");
-          setpercentCompleted(1);
-          return;
-        }
+      const db = getFirestore();
+      const userDocRef = doc(db, "users", userId);
 
-        // User has existing streak data
-        const lastLogin = userData.loginStreak.lastLoginDate?.toDate();
-        const now = new Date();
-        const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-        
-        if (lastLogin) {
-          const lastLoginDate = new Date(lastLogin.getFullYear(), lastLogin.getMonth(), lastLogin.getDate());
-          const yesterday = new Date(today);
-          yesterday.setDate(yesterday.getDate() - 1);
-          
-          if (lastLoginDate.getTime() === today.getTime()) {
-            // Already logged in today
-            setpercentCompleted(10);
+      try {
+        const userDoc = await getDoc(userDocRef);
+
+        if (userDoc.exists()) {
+          const userData = userDoc.data();
+
+          // Check if loginStreak field exists
+          if (!userData.loginStreak) {
+            // First time - create the field
+            await updateDoc(userDocRef, {
+              "loginStreak.currentStreak": 1,
+              "loginStreak.longestStreak": 1,
+              "loginStreak.lastLoginDate": serverTimestamp(),
+            });
+            console.log("Created login streak for new user");
+            setpercentCompleted(1);
             return;
-          } else if (lastLoginDate.getTime() === yesterday.getTime()) {
-            // Consecutive day - increment streak
-            const newStreak = userData.loginStreak.currentStreak + 1;
-            const longestStreak = Math.max(newStreak, userData.loginStreak.longestStreak);
-            setpercentCompleted(newStreak);
-            await updateDoc(userDocRef, {
-              'loginStreak.currentStreak': newStreak,
-              'loginStreak.longestStreak': longestStreak,
-              'loginStreak.lastLoginDate': serverTimestamp()
-            });
-            console.log(`Streak continued: ${newStreak} days`);
-          } else {
-            // Streak broken - reset to 1
-            await updateDoc(userDocRef, {
-              'loginStreak.currentStreak': 1,
-              'loginStreak.lastLoginDate': serverTimestamp()
-            });
-            console.log("Streak reset to 1");
           }
+
+          // User has existing streak data
+          const lastLogin = userData.loginStreak.lastLoginDate?.toDate();
+          const now = new Date();
+          const today = new Date(
+            now.getFullYear(),
+            now.getMonth(),
+            now.getDate()
+          );
+
+          if (lastLogin) {
+            const lastLoginDate = new Date(
+              lastLogin.getFullYear(),
+              lastLogin.getMonth(),
+              lastLogin.getDate()
+            );
+            const yesterday = new Date(today);
+            yesterday.setDate(yesterday.getDate() - 1);
+
+            if (lastLoginDate.getTime() === today.getTime()) {
+              // Already logged in today
+              setpercentCompleted(10);
+              return;
+            } else if (lastLoginDate.getTime() === yesterday.getTime()) {
+              // Consecutive day - increment streak
+              const newStreak = userData.loginStreak.currentStreak + 1;
+              const longestStreak = Math.max(
+                newStreak,
+                userData.loginStreak.longestStreak
+              );
+              setpercentCompleted(newStreak);
+              await updateDoc(userDocRef, {
+                "loginStreak.currentStreak": newStreak,
+                "loginStreak.longestStreak": longestStreak,
+                "loginStreak.lastLoginDate": serverTimestamp(),
+              });
+              console.log(`Streak continued: ${newStreak} days`);
+            } else {
+              // Streak broken - reset to 1
+              await updateDoc(userDocRef, {
+                "loginStreak.currentStreak": 1,
+                "loginStreak.lastLoginDate": serverTimestamp(),
+              });
+              console.log("Streak reset to 1");
+            }
+          }
+        } else {
+          // User document doesn't exist - create it
+          await setDoc(userDocRef, {
+            userId: userId,
+            loginStreak: {
+              currentStreak: 1,
+              longestStreak: 1,
+              lastLoginDate: serverTimestamp(),
+            },
+          });
         }
-        
-      } 
-      else {
-        // User document doesn't exist - create it
-        await setDoc(userDocRef, {
-          userId: userId,
-          loginStreak: {
-            currentStreak: 1,
-            longestStreak: 1,
-            lastLoginDate: serverTimestamp()
-          }
-        });
+      } catch (error) {
+        console.error("Error updating streak:", error);
       }
-    } 
-    catch (error) {
-      console.error("Error updating streak:", error);
-    }
+    };
+
+    updateLoginStreak(user.uid);
+  }, []);
+
+  const calculateProgress = (completedTasks, totalTasks) => {
+    if (totalTasks === 0) return 0;
+    return Math.round((completedTasks / totalTasks) * 100);
   };
 
-  updateLoginStreak(user.uid)
-  }, [])
+  const ProgressBar = () => {
+    return (
+      <div className="flex flex-col items-center w-full max-w-xl">
+        <progress
+          className="progressBar w-full h-5"
+          value={percentCompleted}
+          max={100}
+        />
+        <p className="mt-2 mb-5 text-xl">
+          {percentCompleted} days of 100 day streak!
+        </p>
+      </div>
+    );
+  };
 
-
- const calculateProgress = (completedTasks, totalTasks) => {
-  if (totalTasks === 0) return 0;
-  return Math.round((completedTasks / totalTasks) * 100);
-};
-
-const ProgressBar = () => {
-  return (
-    <div className="flex flex-col items-center w-full max-w-xl">
-      <progress
-        className="progressBar w-full h-5"
-        value={percentCompleted}
-        max={100}
-      />
-      <p className="mt-2 mb-5 text-xl">
-         {percentCompleted} days of 100 day streak!
-      </p>
-    </div>
-  );
-};
-  
   useEffect(() => {
     const fetchEvents = async () => {
       if (!accessToken) {
@@ -217,7 +262,7 @@ const ProgressBar = () => {
   };
 
   const displayEvents = (events) => {
-    console.log(events)
+    console.log(events);
     if (error) {
       return <p className="text-red-500">{error}</p>;
     }
@@ -226,12 +271,20 @@ const ProgressBar = () => {
     } else {
       return (
         <ul className="text-left">
-          {events.map((event, index) => {
+          {events.map((event) => {
             const start = event.start.dateTime || event.start.date;
             return (
-              <li key={index}>
-
-                {new Date(start).toLocaleString()} - {event.summary}
+              <li
+                key={event.id}
+                className={`event-item ${event.isRemoving ? "removing" : ""}`}
+              >
+                <input
+                  type="checkbox"
+                  checked={selectedEvents.includes(event.id)}
+                  onChange={() => handleCheckboxChange(event.id)}
+                  className="mr-2"
+                />
+                {new Date(event.start.dateTime || event.start.date).toLocaleString()} - {event.summary}
               </li>
               
             );
@@ -241,14 +294,34 @@ const ProgressBar = () => {
     }
   };
 
+  const handleCheckedBox = async (eventId) => {
+    setSelectedEvents((prevSelectedEvents) =>
+    prevSelectedEvents.filter((id) => id !== eventId)
+  );
+
+  try {
+      if (!response.ok) {
+        console.error("Failed to delete event", await response.json());
+      } else {
+        // Remove from events state to update UI
+        setEvents((prevEvents) =>
+          prevEvents.filter((event) => event.id !== eventId)
+        );
+        console.log("Event deleted:", eventId);
+      }
+    } catch (error) {
+      console.error("Error deleting event:", error);
+    }
+  };
 
   return (
     <div className="flex flex-col items-center justify-center min-h-screen bg-gray-100 p-4">
       <div className="text-center w-full max-w-2xl">
-        
-        <h1 className="text-4xl font-bold mb-4">Welcome, {user.displayName} to The Command Center!</h1>
+        <h1 className="text-4xl font-bold mb-4">
+          Welcome, {user.displayName} to The Command Center!
+        </h1>
         <div className="flex justify-center pt-5">
-            <ProgressBar />
+          <ProgressBar />
         </div>
         {/* <p className="text-lg mb-8">Email: {user.email}</p>*/}
         <div className="flex flex-row items-center justify-evenly pb-5">
@@ -263,7 +336,7 @@ const ProgressBar = () => {
             </button>
           </Link>
         </div>
-        
+
         <div className="bg-white p-6 rounded-lg shadow-md mb-8">
           <h2 className="text-2xl font-bold mb-4">Create New Task</h2>
           <form onSubmit={handleAddEvent} className="flex flex-col gap-4">
@@ -303,8 +376,12 @@ const ProgressBar = () => {
         <div className="bg-white p-6 rounded-lg shadow-md">
           <h2 className="text-2xl font-bold mb-4">Upcoming Tasks</h2>
           {displayEvents(events)}
-
-          
+          <button
+            onClick={handleCompleteEvents}
+            className="mt-4 bg-green-500 hover:bg-green-700 text-white font-bold py-2 px-4 rounded"
+          >
+            Completed
+          </button>
         </div>
       </div>
     </div>
