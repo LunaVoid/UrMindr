@@ -17,3 +17,14 @@
 .progressBar::-moz-progress-bar {
   background-color: #4caf50;
 }
+
+.event-item {
+  display: flex;
+  align-items: center;
+  transition: transform 0.3s ease, opacity 0.3s ease;
+}
+
+.event-item.removing {
+  transform: translateX(100%); /* Swipe to the right */
+  opacity: 0;
+}

@@ -26,13 +26,20 @@ function Home({ user, accessToken }) {
   const [endTime, setEndTime] = useState("");
   const [selectedEvents, setSelectedEvents] = useState([]); // New state for selected events
 
-  const handleCheckboxChange = (eventId) => {
-    setSelectedEvents((prevSelectedEvents) =>
-      prevSelectedEvents.includes(eventId)
-        ? prevSelectedEvents.filter((id) => id !== eventId)
-        : [...prevSelectedEvents, eventId]
+ const handleCheckboxChange = (eventId) => {
+  // Mark the event as "removing" to trigger animation
+  setEvents((prevEvents) =>
+    prevEvents.map((event) =>
+      event.id === eventId ? { ...event, isRemoving: true } : event
+    )
+  );
+
+  setTimeout(() => {
+    setEvents((prevEvents) =>
+      prevEvents.filter((event) => event.id !== eventId)
     );
-  };
+  }, 300); 
+};
 
   const handleCompleteEvents = () => {
     const completedEventNames = events
@@ -267,19 +274,42 @@ function Home({ user, accessToken }) {
           {events.map((event) => {
             const start = event.start.dateTime || event.start.date;
             return (
-              <li key={event.id} className="flex items-center">
+              <li
+                key={event.id}
+                className={`event-item ${event.isRemoving ? "removing" : ""}`}
+              >
                 <input
                   type="checkbox"
                   checked={selectedEvents.includes(event.id)}
                   onChange={() => handleCheckboxChange(event.id)}
                   className="mr-2"
                 />
-                {new Date(start).toLocaleString()} - {event.summary}
+                {new Date(event.start.dateTime || event.start.date).toLocaleString()} - {event.summary}
               </li>
             );
           })}
         </ul>
       );
+    }
+  };
+
+  const handleCheckedBox = async (eventId) => {
+    setSelectedEvents((prevSelectedEvents) =>
+    prevSelectedEvents.filter((id) => id !== eventId)
+  );
+
+  try {
+      if (!response.ok) {
+        console.error("Failed to delete event", await response.json());
+      } else {
+        // Remove from events state to update UI
+        setEvents((prevEvents) =>
+          prevEvents.filter((event) => event.id !== eventId)
+        );
+        console.log("Event deleted:", eventId);
+      }
+    } catch (error) {
+      console.error("Error deleting event:", error);
     }
   };
 
