@@ -16,7 +16,7 @@ from firebase_admin import credentials, auth, firestore
 
 # --- Firebase Admin SDK Initialization ---
 try:
-    cred = credentials.ApplicationDefault()
+    cred = credentials.Certificate("hackgt2025-firebase-adminsdk-fbsvc-1c9237b900.json")
     firebase_admin.initialize_app(cred)
     db = firestore.client()
     print("✅ Firebase Admin SDK initialized successfully.")
@@ -61,8 +61,9 @@ def start_or_get_chat(user_id, chat_id=None):
         # TODO: Optionally, verify the chat_id exists before returning.
         return chat_id
     else:
-        # Create a new chat document
-        new_chat_ref = user_chats_ref.document()
+        # Create a new chat document with an ISO formatted timestamp as the ID
+        now_iso = datetime.datetime.now(datetime.timezone.utc).isoformat()
+        new_chat_ref = user_chats_ref.document(now_iso)
         new_chat_ref.set({
             'startTime': datetime.datetime.now(datetime.timezone.utc),
             'messages': []
@@ -358,14 +359,14 @@ def genwithtools():
         chat_history = chat_history_snap.to_dict().get('messages', [])
 
         # The 'contents' argument should be a list of alternating user/model messages
-        # We add the system instructions first
-        contents = [system_instructions]
         # Then add the existing chat history
+        contents = [system_instructions]
         for message in chat_history:
             role = 'user' if message['role'] == 'user' else 'model'
             contents.append({'role': role, 'parts': [{'text': message['content']}]})
         # Finally, add the current user prompt
         contents.append({'role': 'user', 'parts': [{'text': prompt}]})
+        
 
 
         response = client.models.generate_content(
@@ -416,14 +417,14 @@ def get_all_user_chats_route():
             if chat_doc.exists and 'messages' in chat_doc.to_dict():
                 messages = chat_doc.to_dict()['messages']
             
-            print(f"  Messages for chat {chat_id}: {messages}") # Debug print
+            # print(f"  Messages for chat {chat_id}: {messages}") # Debug print
             chats_data[chat_id] = messages
         
-        print(f"All chats for user {user_id}:")
-        for chat_id, messages in chats_data.items():
-            print(f"  Chat ID: {chat_id}")
-            for msg in messages:
-                print(f"    - {msg.get('sender')}: {msg.get('text')}")
+        # print(f"All chats for user {user_id}:")
+        # for chat_id, messages in chats_data.items():
+        #     print(f"  Chat ID: {chat_id}")
+        #     for msg in messages:
+        #         print(f"    - {msg.get('sender')}: {msg.get('text')}")
         
         return jsonify(chats_data), 200
     except Exception as e:
