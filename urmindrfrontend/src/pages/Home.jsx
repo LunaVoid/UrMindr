@@ -27,19 +27,48 @@ function Home({ user, accessToken }) {
   const [selectedEvents, setSelectedEvents] = useState([]); // New state for selected events
 
  const handleCheckboxChange = (eventId) => {
-  // Mark the event as "removing" to trigger animation
+  // Optional: trigger removal animation
   setEvents((prevEvents) =>
     prevEvents.map((event) =>
       event.id === eventId ? { ...event, isRemoving: true } : event
     )
   );
 
+  // After animation, delete from calendar
   setTimeout(() => {
-    setEvents((prevEvents) =>
-      prevEvents.filter((event) => event.id !== eventId)
-    );
-  }, 300); 
+    deleteEventFromCalendar(eventId);
+  }, 300); // match your CSS animation duration
 };
+
+  const deleteEventFromCalendar = async (eventId) => {
+    if (!accessToken) return;
+
+    try {
+      const response = await fetch(
+        `https://www.googleapis.com/calendar/v3/calendars/primary/events/${eventId}`,
+        {
+          method: "DELETE",
+          headers: {
+            Authorization: `Bearer ${accessToken}`,
+          },
+        }
+      );
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        console.error("Failed to delete event:", errorData);
+        throw new Error("Failed to delete event");
+      } else {
+        console.log("Event deleted successfully:", eventId);
+        // Remove from local state
+        setEvents((prevEvents) =>
+          prevEvents.filter((event) => event.id !== eventId)
+        );
+      }
+    } catch (error) {
+      console.error("Error deleting event:", error);
+    }
+  };
 
   const handleCompleteEvents = () => {
     const completedEventNames = events
@@ -260,6 +289,7 @@ function Home({ user, accessToken }) {
       setError(error.message);
     }
   };
+
 
   const displayEvents = (events) => {
     console.log(events);
