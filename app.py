@@ -16,7 +16,8 @@ from firebase_admin import credentials, auth, firestore
 
 # --- Firebase Admin SDK Initialization ---
 try:
-    cred = credentials.Certificate("hackgt2025-firebase-adminsdk-fbsvc-1c9237b900.json")
+    #cred = credentials.Certificate("hackgt2025-firebase-adminsdk-fbsvc-1c9237b900.json")
+    cred = credentials.ApplicationDefault()
     firebase_admin.initialize_app(cred)
     db = firestore.client()
     print("✅ Firebase Admin SDK initialized successfully.")

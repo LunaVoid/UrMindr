@@ -1,5 +1,7 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
+import { getAuth, onAuthStateChanged } from "firebase/auth";
+import { getFirestore, collection, query, orderBy, limit, where, getDocs, doc, getDoc, updateDoc, setDoc, serverTimestamp } from "firebase/firestore";
 import React from 'react';
 import '../progressBar.css';
 
@@ -9,6 +11,93 @@ function Home({ user, accessToken }) {
   const [summary, setSummary] = useState("");
   const [startTime, setStartTime] = useState("");
   const [endTime, setEndTime] = useState("");
+  const [percentCompleted, setpercentCompleted] = useState(0);
+
+  //console.log(user)
+  console.log("Auth user ID:", user.uid);
+  console.log("Document ID should match this");
+  useEffect(()=>{
+
+    console.log("Auth user ID:", user.uid);
+    console.log("Document ID should match this");
+    const updateLoginStreak = async (userId) => {
+    const db = getFirestore();
+    const userDocRef = doc(db, 'users', userId);
+    
+    try {
+      const userDoc = await getDoc(userDocRef);
+      
+      if (userDoc.exists()) {
+        const userData = userDoc.data();
+        
+        // Check if loginStreak field exists
+        if (!userData.loginStreak) {
+          // First time - create the field
+          await updateDoc(userDocRef, {
+            'loginStreak.currentStreak': 1,
+            'loginStreak.longestStreak': 1,
+            'loginStreak.lastLoginDate': serverTimestamp()
+          });
+          console.log("Created login streak for new user");
+          setpercentCompleted(1);
+          return;
+        }
+
+        // User has existing streak data
+        const lastLogin = userData.loginStreak.lastLoginDate?.toDate();
+        const now = new Date();
+        const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+        
+        if (lastLogin) {
+          const lastLoginDate = new Date(lastLogin.getFullYear(), lastLogin.getMonth(), lastLogin.getDate());
+          const yesterday = new Date(today);
+          yesterday.setDate(yesterday.getDate() - 1);
+          
+          if (lastLoginDate.getTime() === today.getTime()) {
+            // Already logged in today
+            setpercentCompleted(10);
+            return;
+          } else if (lastLoginDate.getTime() === yesterday.getTime()) {
+            // Consecutive day - increment streak
+            const newStreak = userData.loginStreak.currentStreak + 1;
+            const longestStreak = Math.max(newStreak, userData.loginStreak.longestStreak);
+            setpercentCompleted(newStreak);
+            await updateDoc(userDocRef, {
+              'loginStreak.currentStreak': newStreak,
+              'loginStreak.longestStreak': longestStreak,
+              'loginStreak.lastLoginDate': serverTimestamp()
+            });
+            console.log(`Streak continued: ${newStreak} days`);
+          } else {
+            // Streak broken - reset to 1
+            await updateDoc(userDocRef, {
+              'loginStreak.currentStreak': 1,
+              'loginStreak.lastLoginDate': serverTimestamp()
+            });
+            console.log("Streak reset to 1");
+          }
+        }
+        
+      } 
+      else {
+        // User document doesn't exist - create it
+        await setDoc(userDocRef, {
+          userId: userId,
+          loginStreak: {
+            currentStreak: 1,
+            longestStreak: 1,
+            lastLoginDate: serverTimestamp()
+          }
+        });
+      }
+    } 
+    catch (error) {
+      console.error("Error updating streak:", error);
+    }
+  };
+
+  updateLoginStreak(user.uid)
+  }, [])
 
 
  const calculateProgress = (completedTasks, totalTasks) => {
@@ -16,9 +105,7 @@ function Home({ user, accessToken }) {
   return Math.round((completedTasks / totalTasks) * 100);
 };
 
-const ProgressBar = ({ completedTasks, totalTasks }) => {
-  const percentCompleted = calculateProgress(completedTasks = 0, totalTasks = 0);
-
+const ProgressBar = () => {
   return (
     <div className="flex flex-col items-center w-full max-w-xl">
       <progress
@@ -26,8 +113,8 @@ const ProgressBar = ({ completedTasks, totalTasks }) => {
         value={percentCompleted}
         max={100}
       />
-      <p className="mt-2">
-        Tasks {percentCompleted}% complete
+      <p className="mt-2 mb-5 text-xl">
+         {percentCompleted} days of 100 day streak!
       </p>
     </div>
   );
@@ -130,6 +217,7 @@ const ProgressBar = ({ completedTasks, totalTasks }) => {
   };
 
   const displayEvents = (events) => {
+    console.log(events)
     if (error) {
       return <p className="text-red-500">{error}</p>;
     }
@@ -154,12 +242,14 @@ const ProgressBar = ({ completedTasks, totalTasks }) => {
 
   return (
     <div className="flex flex-col items-center justify-center min-h-screen bg-gray-100 p-4">
-      <ProgressBar currentValue={70} maxValue={100} />
       <div className="text-center w-full max-w-2xl">
-        <h1 className="text-4xl font-bold mb-4">Account Information</h1>
-        <p className="text-lg">Welcome, {user.displayName}!</p>
-        <p className="text-lg mb-8">Email: {user.email}</p>
-        <div className="flex flex-row items-center justify-evenly">
+        
+        <h1 className="text-4xl font-bold mb-4">Welcome, {user.displayName} to The Command Center!</h1>
+        <div className="flex justify-center pt-5">
+            <ProgressBar />
+        </div>
+        {/* <p className="text-lg mb-8">Email: {user.email}</p>*/}
+        <div className="flex flex-row items-center justify-evenly pb-5">
           <Link to="/calendar">
             <button className="bg-green-500 hover:bg-green-700 text-white font-bold py-2 px-4 rounded mb-6">
               Go to Calendar
@@ -171,9 +261,9 @@ const ProgressBar = ({ completedTasks, totalTasks }) => {
             </button>
           </Link>
         </div>
-
+        
         <div className="bg-white p-6 rounded-lg shadow-md mb-8">
-          <h2 className="text-2xl font-bold mb-4">Create New Event</h2>
+          <h2 className="text-2xl font-bold mb-4">Create New Task</h2>
           <form onSubmit={handleAddEvent} className="flex flex-col gap-4">
             <input
               type="text"
@@ -203,14 +293,16 @@ const ProgressBar = ({ completedTasks, totalTasks }) => {
               type="submit"
               className="bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded"
             >
-              Add Event
+              Add Task
             </button>
           </form>
         </div>
 
         <div className="bg-white p-6 rounded-lg shadow-md">
-          <h2 className="text-2xl font-bold mb-4">Upcoming Events</h2>
+          <h2 className="text-2xl font-bold mb-4">Upcoming Tasks</h2>
           {displayEvents(events)}
+
+          
         </div>
       </div>
     </div>
