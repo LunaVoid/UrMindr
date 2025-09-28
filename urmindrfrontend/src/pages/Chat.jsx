@@ -56,6 +56,7 @@ function Chat() {
     }
 
     try {
+      const accessToken = sessionStorage.getItem("accessToken");
       const response = await fetch(url, {
         method: "POST",
         headers: {
@@ -63,7 +64,7 @@ function Chat() {
           "Content-Type": "application/json",
           Authorization: `Bearer ${idToken}`,
         },
-        body: JSON.stringify(requestBody),
+        body: JSON.stringify({prompt:requestBody,accessToken: accessToken}),
       });
 
       const result = await response.json();
