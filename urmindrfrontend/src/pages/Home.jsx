@@ -230,8 +230,10 @@ const ProgressBar = () => {
             const start = event.start.dateTime || event.start.date;
             return (
               <li key={index}>
+
                 {new Date(start).toLocaleString()} - {event.summary}
               </li>
+              
             );
           })}
         </ul>

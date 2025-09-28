@@ -75,7 +75,9 @@ function Chat() {
           "Content-Type": "application/json",
           Authorization: `Bearer ${idToken}`,
         },
-        body: JSON.stringify(requestBody),
+        body: JSON.stringify({...requestBody,
+          accessToken: accessToken
+        }),
       });
 
       const result = await response.json();
